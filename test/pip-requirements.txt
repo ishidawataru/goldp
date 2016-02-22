@@ -1,0 +1,5 @@
+docker-py
+pyyaml
+pyroute2
+nsenter
+netaddr
