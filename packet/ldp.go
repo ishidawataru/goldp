@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 )
 
 var VERSION = uint16(1)
@@ -59,6 +60,35 @@ const (
 	// 0x3F00 - 0x3FFF LDP Experimental Extensions
 )
 
+var TLVTypeNameMap = map[TLVType]string{
+	TLV_TYPE_FEC:                       "FEC",
+	TLV_TYPE_ADDRESS_LIST:              "ADDRESS-LIST",
+	TLV_TYPE_HOP_COUNT:                 "HOP-COUNT",
+	TLV_TYPE_PATH_VECTOR:               "PATH-VECTOR",
+	TLV_TYPE_GENERIC:                   "GENERIC",
+	TLV_TYPE_ATM:                       "ATM",
+	TLV_TYPE_FRAME_RELAY:               "FRAME-RELAY",
+	TLV_TYPE_STATUS:                    "STATUS",
+	TLV_TYPE_EXTENDED_STATUS:           "EXTENDED-STATUS",
+	TLV_TYPE_RETURNED_PDU:              "RETURNED-PDU",
+	TLV_TYPE_RETURNED_MSG:              "RETURNED-MSG",
+	TLV_TYPE_COMMON_HELLO_PARAM:        "HELLO-PARAM",
+	TLV_TYPE_IPV4_TRANSPORT_ADDRESS:    "IPv4-TRANSPORT",
+	TLV_TYPE_CONFIG_SEQ_NUM:            "CONFIG-SEQ-NUM",
+	TLV_TYPE_IPV6_TRANSPORT_ADDRESS:    "IPv6-TRANSPORT",
+	TLV_TYPE_COMMON_SESSION_PARAM:      "SESSION-PARAM",
+	TLV_TYPE_ATM_SESSION_PARAM:         "ATM-SESSION-PARAM",
+	TLV_TYPE_FRAME_RELAY_SESSION_PARAM: "FRAME-RELAY-SESSION-PARAM",
+	TLV_TYPE_LABEL_REQ_MSG_ID:          "LABEL-REQ-MSG-ID",
+}
+
+func (t TLVType) String() string {
+	if n, y := TLVTypeNameMap[t]; y {
+		return n
+	}
+	return fmt.Sprintf("TLVType(%d)", t)
+}
+
 func parseTLV(buf []byte) (TLVInterface, []byte, error) {
 	if len(buf) < 4 {
 		return nil, nil, fmt.Errorf("failed to parse TLV lack of bytes. needs 4 at least but got %d", len(buf))
@@ -73,8 +103,14 @@ func parseTLV(buf []byte) (TLVInterface, []byte, error) {
 	}
 	var tlv TLVInterface
 	switch typ {
+	case TLV_TYPE_ADDRESS_LIST:
+		tlv = &AddressListTLV{}
+	case TLV_TYPE_STATUS:
+		tlv = &StatusTLV{}
 	case TLV_TYPE_COMMON_HELLO_PARAM:
 		tlv = &CommonHelloParamTLV{}
+	case TLV_TYPE_COMMON_SESSION_PARAM:
+		tlv = &CommonSessionParamTLV{}
 	default:
 		return nil, nil, fmt.Errorf("unknown tlv type %s", typ)
 	}
@@ -94,6 +130,252 @@ type TLVInterface interface {
 	Type() TLVType
 	String() string
 	MarshalJSON() ([]byte, error)
+}
+
+const (
+	AFI_IP  = 1
+	AFI_IP6 = 2
+)
+
+type AddressListTLV struct {
+	Family int
+	List   []net.IP
+}
+
+func (t *AddressListTLV) Decode(data []byte) error {
+	if len(data) < 2 {
+		return fmt.Errorf("invalid value length, expects 2 at least not %d", len(data))
+	}
+	family := int(binary.BigEndian.Uint16(data[:2]))
+	t.Family = family
+	var size int
+	switch family {
+	case AFI_IP:
+		size = 4
+	case AFI_IP6:
+		size = 16
+	default:
+		return fmt.Errorf("unknown address family %d", family)
+	}
+	data = data[2:]
+	if len(data)%size != 0 {
+		return fmt.Errorf("invalid address list. len(%d)%size(%d) != 0 ", len(data), size)
+	}
+	t.List = make([]net.IP, 0, len(data)/size)
+	for len(data) > 0 {
+		t.List = append(t.List, net.IP(data[:size]))
+		data = data[size:]
+	}
+	return nil
+}
+
+func (t *AddressListTLV) Serialize() ([]byte, error) {
+	buf := make([]byte, 2)
+	binary.BigEndian.PutUint16(buf, uint16(t.Family))
+	switch t.Family {
+	case AFI_IP:
+		for _, addr := range t.List {
+			buf = append(buf, addr.To4()...)
+		}
+	case AFI_IP6:
+		for _, addr := range t.List {
+			buf = append(buf, addr.To16()...)
+		}
+	default:
+		return nil, fmt.Errorf("unknown address family: %d", t.Family)
+	}
+	return serializeTLV(t.Type(), buf)
+}
+
+func (t *AddressListTLV) Type() TLVType {
+	return TLV_TYPE_ADDRESS_LIST
+}
+
+func (t *AddressListTLV) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 16))
+	list := make([]string, 0, len(t.List))
+	for _, addr := range t.List {
+		list = append(list, addr.String())
+	}
+	buf.WriteString(fmt.Sprintf("[ ADDRESS-LIST | %s ]", strings.Join(list, ", ")))
+	return buf.String()
+}
+
+func (t *AddressListTLV) MarshalJSON() ([]byte, error) {
+	list := make([]string, 0, len(t.List))
+	for _, addr := range t.List {
+		list = append(list, addr.String())
+	}
+	return json.Marshal(struct {
+		typ    TLVType  `json:"type"`
+		family int      `json:"family"`
+		list   []string `json:"list"`
+	}{
+		typ:    TLV_TYPE_ADDRESS_LIST,
+		family: t.Family,
+		list:   list,
+	})
+}
+
+type StatusCode uint32
+
+const (
+	STATUS_SUCCESS StatusCode = iota
+	STATUS_BAD_LDP_ID
+	STATUS_BAD_VERSION
+	STATUS_BAD_PDU_LEN
+	STATUS_UNKNOWN_MSG_TYPE
+	STATUS_BAD_MSG_LEN
+	STATUS_UNKNOWN_TLV
+	STATUS_BAD_TLV_LEN
+	STATUS_MALFORMED_TLV_VALUE
+	STATUS_HOLD_TIMER_EXPIRED
+	STATUS_SHUTDOWN
+	STATUS_LOOP_DETECTED
+	STATUS_UNKNOWN_FEC
+	STATUS_NO_ROUTE
+	STATUS_NO_LABEL_RESOURCES
+	STATUS_LABEL_RESOURCES_AVAIL
+	STATUS_SESSION_REJECTED_NO_HELLO
+	STATUS_SESSION_REJECTED_ADV_MODE
+	STATUS_SESSION_REJECTED_MAX_PDU_LEN
+	STATUS_SESSION_REJECTED_LABEL_RANGE
+	STATUS_KEEPALIVE_TIMER_EXPIRED
+	STATUS_LABEL_REQ_ABORTED
+	STATUS_MISSING_MSG_PARAM
+	STATUS_UNSUPPORTED_FAMILY
+	STATUS_SESSION_REJECTED_BAD_KEEPALIVE_TIME
+	STATUS_INTERNAL_ERROR
+)
+
+var StatusCodeNameMap = map[StatusCode]string{
+	STATUS_SUCCESS:                             "success",
+	STATUS_BAD_LDP_ID:                          "bad-ldp-id",
+	STATUS_BAD_VERSION:                         "bad-version",
+	STATUS_BAD_PDU_LEN:                         "bad-pdu-len",
+	STATUS_UNKNOWN_MSG_TYPE:                    "unknown-msg-type",
+	STATUS_BAD_MSG_LEN:                         "bad-msg-len",
+	STATUS_UNKNOWN_TLV:                         "unknown-tlv",
+	STATUS_BAD_TLV_LEN:                         "bad-tlv-len",
+	STATUS_MALFORMED_TLV_VALUE:                 "malformed-tlv-value",
+	STATUS_HOLD_TIMER_EXPIRED:                  "hold-timer-expired",
+	STATUS_SHUTDOWN:                            "shutdown",
+	STATUS_LOOP_DETECTED:                       "loop-detected",
+	STATUS_UNKNOWN_FEC:                         "unknown-fec",
+	STATUS_NO_ROUTE:                            "no-route",
+	STATUS_NO_LABEL_RESOURCES:                  "no-label-resources",
+	STATUS_LABEL_RESOURCES_AVAIL:               "label-resources-avail",
+	STATUS_SESSION_REJECTED_NO_HELLO:           "no-hello",
+	STATUS_SESSION_REJECTED_ADV_MODE:           "bad-adv-mode",
+	STATUS_SESSION_REJECTED_MAX_PDU_LEN:        "bad-max-pdu-len",
+	STATUS_SESSION_REJECTED_LABEL_RANGE:        "bad-label-range",
+	STATUS_KEEPALIVE_TIMER_EXPIRED:             "keepalive-timer-expired",
+	STATUS_LABEL_REQ_ABORTED:                   "label-req-aborted",
+	STATUS_MISSING_MSG_PARAM:                   "missing-msg-param",
+	STATUS_UNSUPPORTED_FAMILY:                  "unsupported-family",
+	STATUS_SESSION_REJECTED_BAD_KEEPALIVE_TIME: "bad-keepalive-time",
+	STATUS_INTERNAL_ERROR:                      "internal-error",
+}
+
+var StatusCodeFlagMap = map[StatusCode]bool{
+	STATUS_SUCCESS:                             false,
+	STATUS_BAD_LDP_ID:                          true,
+	STATUS_BAD_VERSION:                         true,
+	STATUS_BAD_PDU_LEN:                         true,
+	STATUS_UNKNOWN_MSG_TYPE:                    false,
+	STATUS_BAD_MSG_LEN:                         true,
+	STATUS_UNKNOWN_TLV:                         false,
+	STATUS_BAD_TLV_LEN:                         true,
+	STATUS_MALFORMED_TLV_VALUE:                 true,
+	STATUS_HOLD_TIMER_EXPIRED:                  true,
+	STATUS_SHUTDOWN:                            true,
+	STATUS_LOOP_DETECTED:                       false,
+	STATUS_UNKNOWN_FEC:                         false,
+	STATUS_NO_ROUTE:                            false,
+	STATUS_NO_LABEL_RESOURCES:                  false,
+	STATUS_LABEL_RESOURCES_AVAIL:               true,
+	STATUS_SESSION_REJECTED_NO_HELLO:           true,
+	STATUS_SESSION_REJECTED_ADV_MODE:           true,
+	STATUS_SESSION_REJECTED_MAX_PDU_LEN:        true,
+	STATUS_SESSION_REJECTED_LABEL_RANGE:        true,
+	STATUS_KEEPALIVE_TIMER_EXPIRED:             true,
+	STATUS_LABEL_REQ_ABORTED:                   false,
+	STATUS_MISSING_MSG_PARAM:                   false,
+	STATUS_UNSUPPORTED_FAMILY:                  false,
+	STATUS_SESSION_REJECTED_BAD_KEEPALIVE_TIME: true,
+	STATUS_INTERNAL_ERROR:                      true,
+}
+
+func (c StatusCode) String() string {
+	return StatusCodeNameMap[c]
+}
+
+type StatusTLV struct {
+	Code        StatusCode
+	E           bool
+	F           bool
+	MessageID   uint32
+	MessageType MessageType
+}
+
+func (t *StatusTLV) Decode(data []byte) error {
+	if len(data) != 10 {
+		return fmt.Errorf("invalid value length, expects 10 not %d", len(data))
+	}
+	c := binary.BigEndian.Uint32(data[:4])
+	if (c & (1 << 31)) > 0 {
+		t.E = true
+	}
+	if (c & (1 << 30)) > 0 {
+		t.F = true
+	}
+	t.Code = StatusCode((c << 2) >> 2) // clear top-most 2 bits
+	t.MessageID = binary.BigEndian.Uint32(data[4:8])
+	t.MessageType = MessageType(binary.BigEndian.Uint16(data[8:]))
+	return nil
+}
+
+func (t *StatusTLV) Serialize() ([]byte, error) {
+	buf := make([]byte, 10)
+	c := uint32(t.Code)
+	if t.E {
+		c |= 1 << 31
+	}
+	if t.F {
+		c |= 1 << 30
+	}
+	binary.BigEndian.PutUint32(buf, c)
+	binary.BigEndian.PutUint32(buf[4:], uint32(t.MessageID))
+	binary.BigEndian.PutUint16(buf[8:], uint16(t.MessageType))
+	return serializeTLV(t.Type(), buf)
+}
+
+func (t *StatusTLV) Type() TLVType {
+	return TLV_TYPE_STATUS
+}
+
+func (t *StatusTLV) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 16))
+	buf.WriteString(fmt.Sprintf("[ STATUS | code: %s, msg-id: %d, type: %s ]", t.Code, t.MessageID, t.Type))
+	return buf.String()
+}
+
+func (t *StatusTLV) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		typ     TLVType `json:"type"`
+		code    uint32  `json:"code"`
+		e       bool    `json:"fatal"`
+		f       bool    `json:"forward"`
+		msgID   uint32  `json:"msg-id"`
+		msgType uint16  `json:"msg-type"`
+	}{
+		typ:     TLV_TYPE_STATUS,
+		code:    uint32(t.Code),
+		e:       t.E,
+		f:       t.F,
+		msgID:   uint32(t.MessageID),
+		msgType: uint16(t.MessageType),
+	})
 }
 
 type CommonHelloParamTLV struct {
@@ -154,7 +436,7 @@ func (t *CommonHelloParamTLV) MarshalJSON() ([]byte, error) {
 		targeted bool    `json:"targeted"`
 		request  bool    `json:"request"`
 	}{
-		typ:      MSG_TYPE_HELLO,
+		typ:      TLV_TYPE_COMMON_HELLO_PARAM,
 		holdtime: t.HoldTime,
 		targeted: t.T,
 		request:  t.R,
@@ -167,6 +449,89 @@ func NewCommonHelloParamTLV(holdtime uint16, targeted, request bool) *CommonHell
 		T:        targeted,
 		R:        request,
 	}
+}
+
+type CommonSessionParamTLV struct {
+	ProtocolVersion       uint16
+	KeepAliveTime         uint16
+	A                     bool  // Label Advertisement Discipline
+	D                     bool  // Loop Detection
+	PVLim                 uint8 // Path Vector Limit
+	MaxPDULength          uint16
+	ReceiverLDPIdentifier LDPIdentifier
+}
+
+func (t *CommonSessionParamTLV) Decode(data []byte) error {
+	if len(data) != 14 {
+		return fmt.Errorf("invalid value length. expects 18 not %d", len(data))
+	}
+	t.ProtocolVersion = binary.BigEndian.Uint16(data[:2])
+	t.KeepAliveTime = binary.BigEndian.Uint16(data[2:4])
+	if (data[4] & (1 << 7)) > 0 {
+		t.A = true
+	}
+	if (data[4] & (1 << 6)) > 0 {
+		t.D = true
+	}
+	t.PVLim = uint8(data[5])
+	t.MaxPDULength = binary.BigEndian.Uint16(data[6:8])
+	t.ReceiverLDPIdentifier = LDPIdentifier(data[8:])
+	return nil
+}
+
+func (t *CommonSessionParamTLV) Serialize() ([]byte, error) {
+	buf := make([]byte, 14)
+	binary.BigEndian.PutUint16(buf, t.ProtocolVersion)
+	binary.BigEndian.PutUint16(buf[2:], t.KeepAliveTime)
+	if t.A {
+		buf[4] |= 1 << 7
+	}
+	if t.D {
+		buf[4] |= 1 << 6
+	}
+	buf[5] = t.PVLim
+	binary.BigEndian.PutUint16(buf[6:], t.MaxPDULength)
+	copy(buf[8:], []byte(t.ReceiverLDPIdentifier))
+	return serializeTLV(t.Type(), buf)
+}
+
+func (t *CommonSessionParamTLV) Type() TLVType {
+	return TLV_TYPE_COMMON_SESSION_PARAM
+}
+
+func (t *CommonSessionParamTLV) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ SESSION | proto: %d, keep-alive: %d", t.ProtocolVersion, t.KeepAliveTime))
+	if t.A {
+		buf.WriteString(", DoD")
+	} else {
+		buf.WriteString(", DU")
+	}
+	if t.D {
+		buf.WriteString(fmt.Sprintf(", loop detection(max path length: %d)", t.PVLim))
+	}
+	buf.WriteString(fmt.Sprintf(", max PDU length: %d, receiver label space: %s ]", t.MaxPDULength, t.ReceiverLDPIdentifier))
+	return buf.String()
+}
+
+func (t *CommonSessionParamTLV) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		typ   TLVType `json:"type"`
+		v     uint16  `json:"keep-alive-time"`
+		a     bool    `json:"a"`
+		d     bool    `json:"d"`
+		pvlim uint8   `json:"path-vector-limit"`
+		m     uint16  `json:"max-pdu-length"`
+		r     string  `json:"receiver-label-space"`
+	}{
+		typ:   TLV_TYPE_COMMON_SESSION_PARAM,
+		v:     t.ProtocolVersion,
+		a:     t.A,
+		d:     t.D,
+		pvlim: t.PVLim,
+		m:     t.MaxPDULength,
+		r:     t.ReceiverLDPIdentifier.String(),
+	})
 }
 
 type MessageType uint16
@@ -226,15 +591,23 @@ func ParseMessage(buf []byte) (MessageInterface, []byte, error) {
 	if len(buf) < int(4+l) {
 		return nil, nil, fmt.Errorf("failed to parse msg(%s) lack of bytes. needs %d but got %d", typ, 4+l, len(buf))
 	}
-	id := binary.BigEndian.Uint32(buf[4:8])
 	var msg MessageInterface
 	switch typ {
+	case MSG_TYPE_NOTIFICATION:
+		msg = &NotificationMessage{}
 	case MSG_TYPE_HELLO:
 		msg = &HelloMessage{}
+	case MSG_TYPE_INIT:
+		msg = &InitMessage{}
+	case MSG_TYPE_KEEPALIVE:
+		msg = &KeepaliveMessage{}
+	case MSG_TYPE_ADDRESS:
+		msg = &AddressMessage{}
+	case MSG_TYPE_ADDRESS_WITHDRAW:
+		msg = &AddressWithdrawMessage{}
 	default:
 		return nil, nil, fmt.Errorf("unknown msg type %s", typ)
 	}
-	msg.SetMsgId(id)
 	return msg, buf[4+l:], msg.Decode(buf[4 : 4+l])
 }
 
@@ -250,8 +623,63 @@ type MessageInterface interface {
 	Decode(data []byte) error
 	Serialize() ([]byte, error)
 	Type() MessageType
-	SetMsgId(uint32)
-	MsgId() uint32
+}
+
+func parseMessage1(data []byte) (uint32, []TLVInterface, error) {
+	id := binary.BigEndian.Uint32(data[:4])
+	tlvs := make([]TLVInterface, 0, 1)
+	data = data[4:]
+	for len(data) > 0 {
+		tlv, rest, err := parseTLV(data)
+		if err != nil {
+			return id, nil, err
+		}
+		tlvs = append(tlvs, tlv)
+		data = rest
+	}
+	return id, tlvs, nil
+}
+
+type NotificationMessage struct {
+	id           uint32
+	Status       *StatusTLV
+	OptionalTLVs []TLVInterface
+}
+
+func (m *NotificationMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	if len(tlvs) < 1 {
+		return fmt.Errorf("invalid hello message. no common hello param tlv")
+	}
+	if tlvs[0].Type() != TLV_TYPE_STATUS {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_STATUS, tlvs[0].Type())
+	}
+	m.Status = tlvs[0].(*StatusTLV)
+	m.OptionalTLVs = tlvs[1:]
+	return nil
+}
+
+func (m *NotificationMessage) Serialize() ([]byte, error) {
+	buf, err := m.Status.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range m.OptionalTLVs {
+		bbuf, err := o.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, bbuf...)
+	}
+	return serializeMessage(m.Type(), m.id, buf)
+}
+
+func (m *NotificationMessage) Type() MessageType {
+	return MSG_TYPE_NOTIFICATION
 }
 
 type HelloMessage struct {
@@ -261,33 +689,19 @@ type HelloMessage struct {
 }
 
 func (m *HelloMessage) Decode(data []byte) error {
-	if len(data) < 12 {
-		return fmt.Errorf("failed to parse msg(%s) lack of bytes. needs 12 at least %d", m.Type(), len(data))
-	}
-	m.id = binary.BigEndian.Uint32(data[:4])
-	tlv, rest, err := parseTLV(data[4:])
+	id, tlvs, err := parseMessage1(data)
 	if err != nil {
 		return err
 	}
-
-	if tlv.Type() != TLV_TYPE_COMMON_HELLO_PARAM {
-		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_COMMON_HELLO_PARAM, tlv.Type())
+	m.id = id
+	if len(tlvs) < 1 {
+		return fmt.Errorf("invalid hello message. no common hello param tlv")
 	}
-	m.CommonHelloParam = tlv.(*CommonHelloParamTLV)
-
-	data = rest
-
-	for len(data) > 0 {
-		tlv, rest, err = parseTLV(data)
-		if err != nil {
-			return err
-		}
-		if m.OptionalTLVs == nil {
-			m.OptionalTLVs = []TLVInterface{}
-		}
-		m.OptionalTLVs = append(m.OptionalTLVs, tlv)
-		data = rest
+	if tlvs[0].Type() != TLV_TYPE_COMMON_HELLO_PARAM {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_COMMON_HELLO_PARAM, tlvs[0].Type())
 	}
+	m.CommonHelloParam = tlvs[0].(*CommonHelloParamTLV)
+	m.OptionalTLVs = tlvs[1:]
 	return nil
 }
 
@@ -310,20 +724,161 @@ func (m *HelloMessage) Type() MessageType {
 	return MSG_TYPE_HELLO
 }
 
-func (m *HelloMessage) MsgId() uint32 {
-	return m.id
-}
-
-func (m *HelloMessage) SetMsgId(id uint32) {
-	m.id = id
-}
-
 func NewHelloMessage(id uint32, param *CommonHelloParamTLV, optionals []TLVInterface) *HelloMessage {
 	return &HelloMessage{
 		id:               id,
 		CommonHelloParam: param,
 		OptionalTLVs:     optionals,
 	}
+}
+
+type InitMessage struct {
+	id                 uint32
+	CommonSessionParam *CommonSessionParamTLV
+	OptionalTLVs       []TLVInterface
+}
+
+func (m *InitMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	if len(tlvs) < 1 {
+		return fmt.Errorf("invalid hello message. no common hello param tlv")
+	}
+	if tlvs[0].Type() != TLV_TYPE_COMMON_SESSION_PARAM {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_COMMON_SESSION_PARAM, tlvs[0].Type())
+	}
+	m.CommonSessionParam = tlvs[0].(*CommonSessionParamTLV)
+	m.OptionalTLVs = tlvs[1:]
+	return nil
+}
+
+func (m *InitMessage) Serialize() ([]byte, error) {
+	buf, err := m.CommonSessionParam.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range m.OptionalTLVs {
+		bbuf, err := o.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, bbuf...)
+	}
+	return serializeMessage(m.Type(), m.id, buf)
+}
+
+func (m *InitMessage) Type() MessageType {
+	return MSG_TYPE_INIT
+}
+
+type KeepaliveMessage struct {
+	id           uint32
+	OptionalTLVs []TLVInterface
+}
+
+func (m *KeepaliveMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	m.OptionalTLVs = tlvs
+	return nil
+}
+
+func (m *KeepaliveMessage) Serialize() ([]byte, error) {
+	return serializeMessage(m.Type(), m.id, nil)
+}
+
+func (m *KeepaliveMessage) Type() MessageType {
+	return MSG_TYPE_KEEPALIVE
+}
+
+type AddressMessage struct {
+	id           uint32
+	List         *AddressListTLV
+	OptionalTLVs []TLVInterface
+}
+
+func (m *AddressMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	if len(tlvs) < 1 {
+		return fmt.Errorf("invalid address message. no address list tlv")
+	}
+	if tlvs[0].Type() != TLV_TYPE_ADDRESS_LIST {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_ADDRESS_LIST, tlvs[0].Type())
+	}
+	m.List = tlvs[0].(*AddressListTLV)
+	m.OptionalTLVs = tlvs[1:]
+	return nil
+}
+
+func (m *AddressMessage) Serialize() ([]byte, error) {
+	buf, err := m.List.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range m.OptionalTLVs {
+		bbuf, err := o.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, bbuf...)
+	}
+	return serializeMessage(m.Type(), m.id, buf)
+}
+
+func (m *AddressMessage) Type() MessageType {
+	return MSG_TYPE_ADDRESS
+}
+
+type AddressWithdrawMessage struct {
+	id           uint32
+	List         *AddressListTLV
+	OptionalTLVs []TLVInterface
+}
+
+func (m *AddressWithdrawMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	if len(tlvs) < 1 {
+		return fmt.Errorf("invalid address message. no address list tlv")
+	}
+	if tlvs[0].Type() != TLV_TYPE_ADDRESS_LIST {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_ADDRESS_LIST, tlvs[0].Type())
+	}
+	m.List = tlvs[0].(*AddressListTLV)
+	m.OptionalTLVs = tlvs[1:]
+	return nil
+}
+
+func (m *AddressWithdrawMessage) Serialize() ([]byte, error) {
+	buf, err := m.List.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range m.OptionalTLVs {
+		bbuf, err := o.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, bbuf...)
+	}
+	return serializeMessage(m.Type(), m.id, buf)
+}
+
+func (m *AddressWithdrawMessage) Type() MessageType {
+	return MSG_TYPE_ADDRESS_WITHDRAW
 }
 
 type LDPIdentifier []byte
