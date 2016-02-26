@@ -24,6 +24,9 @@ const (
 	DEL_INTF
 	SET_INTF
 	ADD_ADDRESS
+	DEL_ADDRESS
+	GET_ADDRESSES
+	MON_ADDRESS
 	GET_INTF
 	GET_INTFS
 	ADD_ROUTE
@@ -44,6 +47,8 @@ type Request struct {
 	Type  ReqType
 	Data  interface{}
 	ResCh chan *Response
+	MonCh chan *Request
+	EndCh chan struct{}
 	From  SourceType
 }
 

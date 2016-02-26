@@ -28,13 +28,14 @@ import (
 )
 
 type LDPServer struct {
-	config     config.Config
-	ReqCh      chan *api.Request
-	helloCh    chan *hello
-	connCh     chan *net.TCPConn
-	sessions   map[string]*LDPSession
-	interfaces map[int]*Interface
-	p          *ipv4.PacketConn
+	config      config.Config
+	ReqCh       chan *api.Request
+	helloCh     chan *hello
+	connCh      chan *net.TCPConn
+	sessions    map[string]*LDPSession
+	interfaces  map[int]*Interface
+	p           *ipv4.PacketConn
+	monitorReqs []*api.Request
 }
 
 type hello struct {
@@ -49,6 +50,7 @@ func (server *LDPServer) HandleReq(req *api.Request) error {
 	defer func() {
 		if req.ResCh != nil {
 			req.ResCh <- res
+			close(req.ResCh)
 		}
 	}()
 
@@ -183,14 +185,37 @@ func (server *LDPServer) HandleReq(req *api.Request) error {
 				break
 			}
 		}
-
 		// TODO: handle duplicates
 		// TODO: broadcast the change
+		server.Notify(req)
+	case api.MON_ADDRESS:
+		server.monitorReqs = append(server.monitorReqs, req)
 	}
 
 	log.Infof("cur config: %v", server.config)
 
 	return nil
+}
+
+func (server *LDPServer) Notify(news *api.Request) {
+	remainReqs := make([]*api.Request, 0, len(server.monitorReqs))
+	for _, req := range server.monitorReqs {
+		do := false
+		switch {
+		case req.Type == api.MON_ADDRESS && (news.Type == api.ADD_ADDRESS || news.Type == api.DEL_ADDRESS):
+			do = true
+		}
+		if do {
+			select {
+			case <-req.EndCh:
+			case req.MonCh <- news:
+				remainReqs = append(remainReqs, req)
+			default:
+				remainReqs = append(remainReqs, req)
+			}
+		}
+	}
+	server.monitorReqs = remainReqs
 }
 
 func (server *LDPServer) Serve() {
@@ -276,11 +301,12 @@ func (server *LDPServer) Serve() {
 
 func NewLDPServer() *LDPServer {
 	return &LDPServer{
-		config:     config.Config{},
-		ReqCh:      make(chan *api.Request, 8),
-		helloCh:    make(chan *hello),
-		connCh:     make(chan *net.TCPConn),
-		sessions:   make(map[string]*LDPSession),
-		interfaces: make(map[int]*Interface),
+		config:      config.Config{},
+		ReqCh:       make(chan *api.Request, 8),
+		helloCh:     make(chan *hello),
+		connCh:      make(chan *net.TCPConn),
+		sessions:    make(map[string]*LDPSession),
+		interfaces:  make(map[int]*Interface),
+		monitorReqs: make([]*api.Request, 0),
 	}
 }

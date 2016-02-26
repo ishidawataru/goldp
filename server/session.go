@@ -224,6 +224,35 @@ func (s *LDPSession) buildInitMsg() ldp.MessageInterface {
 	}
 }
 
+func (s *LDPSession) buildAddrMsg(c []config.Interface) []ldp.MessageInterface {
+	ipv4 := make([]net.IP, 0, len(c))
+	ipv6 := make([]net.IP, 0, len(c))
+	for _, i := range c {
+		for _, a := range i.Addresses {
+			ip, _, _ := net.ParseCIDR(a)
+			if ip.To4() != nil {
+				ipv4 = append(ipv4, ip)
+			} else {
+				ipv6 = append(ipv6, ip)
+			}
+		}
+	}
+	msgs := make([]ldp.MessageInterface, 0, 2)
+	msgs = append(msgs, &ldp.AddressMessage{
+		List: &ldp.AddressListTLV{
+			Family: ldp.AFI_IP,
+			List:   ipv4,
+		},
+	})
+	msgs = append(msgs, &ldp.AddressMessage{
+		List: &ldp.AddressListTLV{
+			Family: ldp.AFI_IP6,
+			List:   ipv6,
+		},
+	})
+	return msgs
+}
+
 func nak(code ldp.StatusCode) ldp.MessageInterface {
 	return &ldp.NotificationMessage{
 		Status: &ldp.StatusTLV{
@@ -363,7 +392,32 @@ func (s *LDPSession) loop() error {
 			d := time.Second * time.Duration(s.sConf.KeepAliveTime)
 			k := time.NewTicker(d)
 			h := time.NewTimer(d * 3)
+
+			monCh := make(chan *api.Request, 8)
+			endCh := make(chan struct{}, 1)
+			s.reqCh <- &api.Request{
+				Type:  api.MON_ADDRESS,
+				MonCh: monCh,
+				EndCh: endCh,
+			}
+
+			ch := make(chan *api.Response)
+			s.reqCh <- &api.Request{
+				Type:  api.GET_INTFS,
+				ResCh: ch,
+			}
+
+			next = OPERATIONAL
+			if err := s.write(s.buildAddrMsg((<-ch).Data.([]config.Interface))...); err != nil {
+				log.Warnf("failed to write address messages: %s", err)
+				next = NON_EXISTENT
+			}
+
 			for {
+				if next != OPERATIONAL {
+					endCh <- struct{}{}
+					break
+				}
 				select {
 				case <-k.C:
 					if err := s.write(&ldp.KeepAliveMessage{}); err != nil {
@@ -388,12 +442,11 @@ func (s *LDPSession) loop() error {
 						h.Reset(d * 3)
 						next = OPERATIONAL
 					}
+				case msg := <-monCh:
+					log.Debugf("mon: %s", msg)
 				case err := <-s.errCh:
 					log.Warnf("%s", err)
 					next = NON_EXISTENT
-				}
-				if next != OPERATIONAL {
-					break
 				}
 			}
 		}
