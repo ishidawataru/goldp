@@ -28,7 +28,7 @@ import (
 )
 
 type LDPServer struct {
-	config     *config.Config
+	config     config.Config
 	ReqCh      chan *api.Request
 	helloCh    chan *hello
 	connCh     chan *net.TCPConn
@@ -52,8 +52,22 @@ func (server *LDPServer) HandleReq(req *api.Request) error {
 		}
 	}()
 
+	getIntf := func(d config.Interface) (*net.Interface, error) {
+		if d.Name != "" {
+			return net.InterfaceByName(d.Name)
+		}
+		if d.Index > 0 {
+			return net.InterfaceByIndex(d.Index)
+		}
+		return nil, fmt.Errorf("specify interface name or index")
+	}
+
 	switch req.Type {
+	case api.GET_GLOBAL:
+		res.Data = server.config.Global
+		return nil
 	case api.SET_GLOBAL:
+		// TODO: allow only once
 		global := req.Data.(config.Global)
 		if global.RouterId != "" && net.ParseIP(global.RouterId).To4() == nil {
 			res.Error = fmt.Errorf("invalid router id")
@@ -94,35 +108,88 @@ func (server *LDPServer) HandleReq(req *api.Request) error {
 				}
 			}()
 		}
-
-	case api.ADD_INTF:
-		d := req.Data.(config.Interface)
-		name := d.Name
-		if intf, err := net.InterfaceByName(name); err != nil {
-			return err
-		} else {
-			if _, y := server.interfaces[intf.Index]; y {
-				res.Error = fmt.Errorf("interface %s is already configured", name)
-				return nil
-			}
-
-			i := &Interface{
-				i:        intf,
-				p:        server.p,
-				endCh:    make(chan chan struct{}),
-				RouterId: server.config.Global.RouterId,
-				HoldTime: server.config.Global.HoldTime,
-			}
-			server.interfaces[intf.Index] = i
-
-			if i.RouterId != "" {
-				if err := i.Hello(); err != nil {
-					return err
-				}
-				log.Debugf("start %s helloing", intf.Name)
+	case api.GET_INTFS:
+		res.Data = server.config.Interfaces
+		return nil
+	case api.GET_INTF:
+		intf, err := getIntf(req.Data.(config.Interface))
+		if err != nil {
+			res.Error = err
+			return nil
+		}
+		for _, c := range server.config.Interfaces {
+			if c.Index == intf.Index {
+				res.Data = c
+				break
 			}
 		}
+		if res.Data == nil {
+			res.Error = fmt.Errorf("not found interface %s(idx %d)", intf.Name, intf.Index)
+		}
+	case api.ADD_INTF:
+		d := req.Data.(config.Interface)
+		intf, err := getIntf(d)
+		if err != nil {
+			res.Error = err
+			return nil
+		}
+		if _, y := server.interfaces[intf.Index]; y {
+			res.Error = fmt.Errorf("interface %s is already configured", intf.Name)
+			return nil
+		}
+
+		d.Name = intf.Name
+		d.Index = intf.Index
+		server.config.Interfaces = append(server.config.Interfaces, d)
+
+		i := &Interface{
+			i:        intf,
+			p:        server.p,
+			endCh:    make(chan chan struct{}),
+			RouterId: server.config.Global.RouterId,
+			HoldTime: server.config.Global.HoldTime,
+		}
+		server.interfaces[intf.Index] = i
+
+		if i.RouterId != "" {
+			if err := i.Hello(); err != nil {
+				return err
+			}
+			log.Debugf("start %s helloing", intf.Name)
+		}
+	case api.DEL_INTF:
+		d := req.Data.(config.Interface)
+		intf, err := getIntf(d)
+		if err != nil {
+			res.Error = err
+			return nil
+		}
+		if i, y := server.interfaces[intf.Index]; !y {
+			res.Error = fmt.Errorf("not found interface %s", intf.Name)
+			return nil
+		} else {
+			i.Stop()
+		}
+	case api.ADD_ADDRESS:
+		d := req.Data.(config.Interface)
+		intf, err := getIntf(d)
+		if err != nil {
+			res.Error = err
+			return nil
+		}
+		for idx, c := range server.config.Interfaces {
+			if c.Index == intf.Index {
+				server.config.Interfaces[idx].Addresses = append(c.Addresses, d.Addresses...)
+				break
+			}
+		}
+
+		// TODO: handle duplicates
+		// TODO: broadcast the change
 	}
+
+	log.Infof("cur config: %v", server.config)
+
 	return nil
 }
 
@@ -178,7 +245,7 @@ func (server *LDPServer) Serve() {
 				continue
 			}
 			if _, y := server.sessions[h.from.IP.String()]; !y {
-				s, err := NewLDPSession(h, server.config.Global.RouterId, server.ReqCh)
+				s, err := NewLDPSession(h, server.config, server.ReqCh)
 				if err != nil {
 					log.Fatalf("%s", err)
 				}
@@ -197,14 +264,19 @@ func (server *LDPServer) Serve() {
 				log.Warnf("incoming connection but this session is active %s", from)
 				continue
 			}
-			server.sessions[from].ConnCh <- c
+			select {
+			case server.sessions[from].ConnCh <- c:
+			default:
+				c.Close()
+				log.Warnf("closed incoming connection from %s to avoid blocking", from)
+			}
 		}
 	}
 }
 
 func NewLDPServer() *LDPServer {
 	return &LDPServer{
-		config:     &config.Config{},
+		config:     config.Config{},
 		ReqCh:      make(chan *api.Request, 8),
 		helloCh:    make(chan *hello),
 		connCh:     make(chan *net.TCPConn),

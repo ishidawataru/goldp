@@ -85,3 +85,9 @@ func (i *Interface) Hello() error {
 	}()
 	return nil
 }
+
+func (i *Interface) Stop() {
+	ch := make(chan struct{})
+	i.endCh <- ch
+	<-ch
+}

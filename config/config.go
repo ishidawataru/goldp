@@ -16,25 +16,69 @@
 package config
 
 import (
+	"fmt"
+
 	"github.com/apex/log"
 	"github.com/ishidawataru/goldp/api"
 	"github.com/spf13/viper"
 )
 
 const (
-	DEFAULT_HOLDTIME = 15
+	DEFAULT_HELLO_INTERVAL  = 5
+	DEFAULT_KEEP_ALIVE_TIME = 10
+	DEFAULT_MAX_PDU_LENGTH  = 4096
 )
 
+type Session struct {
+	LocalId       string       `mapstructure:"local-id"`
+	PeerId        string       `mapstructure:"peer-id"`
+	KeepAliveTime int          `mapstructure:"keep-alive-time"`
+	MaxPDULength  int          `mapstructure:"max-pdu-length"`
+	LoopDetection bool         `mapstructure:"loop-detection"`
+	PVLim         int          `mapstructure:"path-vector-limit"`
+	LabelAdvMode  LabelAdvMode `mapstructure:"label-adv-mode"`
+}
+
 type Interface struct {
-	Name   string `mapstructure:"name"`
-	Index  int    `mapstructure:"index"`
-	Status int    `mapstructure:"status"`
+	Name      string   `mapstructure:"name"`
+	Index     int      `mapstructure:"index"`
+	Status    int      `mapstructure:"status"`
+	Addresses []string `mapstructure:"addresses"`
+}
+
+type LabelAdvMode string
+
+const (
+	DOD LabelAdvMode = "dod"
+	DU  LabelAdvMode = "du"
+)
+
+var LabelAdvModeToIntMap = map[LabelAdvMode]int{
+	DOD: 0,
+	DU:  1,
+}
+
+func (v LabelAdvMode) Validate() error {
+	if _, ok := LabelAdvModeToIntMap[v]; !ok {
+		return fmt.Errorf("invalid LabelAdvMode: %s", v)
+	}
+	return nil
+}
+
+func (v LabelAdvMode) Default() LabelAdvMode {
+	return DU
 }
 
 type Global struct {
-	RouterId     string `mapstructure:"router-id"`
-	HoldTime     int    `mapstructure:"hold-time"`
-	LocalAddress string `mapstructure:"local-address"`
+	RouterId      string       `mapstructure:"router-id"`
+	HoldTime      int          `mapstructure:"hold-time"`
+	LocalAddress  string       `mapstructure:"local-address"`
+	HelloInterval int          `mapstructure:"hello-interval"`
+	KeepAliveTime int          `mapstructure:"keep-alive-time"`
+	MaxPDULength  int          `mapstructure:"max-pdu-length"`
+	LoopDetection bool         `mapstructure:"loop-detection"`
+	PVLim         int          `mapstructure:"path-vector-limit"`
+	LabelAdvMode  LabelAdvMode `mapstructure:"label-adv-mode"`
 }
 
 type Config struct {
@@ -42,13 +86,35 @@ type Config struct {
 	Interfaces []Interface `mapstructure:"interfaces"`
 }
 
+type State struct {
+	Global     Global             `mapstructure:"global"`
+	Interfaces []Interface        `mapstructure:"interfaces"`
+	Sessions   map[string]Session `mapstructure:"sessions"`
+}
+
 func SetDefault(v *viper.Viper, c *Config) error {
 	if v == nil {
 		v = viper.New()
 	}
 
+	if !v.IsSet("global.hello-interval") {
+		c.Global.HelloInterval = DEFAULT_HELLO_INTERVAL
+	}
+
 	if !v.IsSet("global.hold-time") {
-		c.Global.HoldTime = DEFAULT_HOLDTIME
+		c.Global.HoldTime = DEFAULT_HELLO_INTERVAL * 3
+	}
+
+	if !v.IsSet("global.keep-alive-time") {
+		c.Global.KeepAliveTime = DEFAULT_KEEP_ALIVE_TIME
+	}
+
+	if !v.IsSet("global.max-pdu-length") {
+		c.Global.MaxPDULength = DEFAULT_MAX_PDU_LENGTH
+	}
+
+	if !v.IsSet("global.label-adv-mode") {
+		c.Global.LabelAdvMode = c.Global.LabelAdvMode.Default()
 	}
 
 	//	if !v.IsSet("interfaces") {
@@ -78,6 +144,8 @@ type ConfigManager struct {
 	reqCh    chan *api.Request
 	file     string
 	format   string
+	waiting  bool
+	doneCh   chan struct{}
 }
 
 func NewConfigManager(file, format string, reqCh chan *api.Request) *ConfigManager {
@@ -86,9 +154,20 @@ func NewConfigManager(file, format string, reqCh chan *api.Request) *ConfigManag
 		reqCh:    reqCh,
 		file:     file,
 		format:   format,
+		doneCh:   make(chan struct{}),
 	}
 	m.ReloadCh <- struct{}{}
 	return m
+}
+
+func (m *ConfigManager) WaitReload() error {
+	if m.waiting {
+		return fmt.Errorf("already waiting")
+	}
+	m.waiting = true
+	<-m.doneCh
+	m.waiting = false
+	return nil
 }
 
 func (m *ConfigManager) Serve() {
@@ -135,6 +214,11 @@ func (m *ConfigManager) Serve() {
 			if res := <-ch; res.Error != nil {
 				log.Fatalf("%s", res.Error)
 			}
+		}
+
+		select {
+		case m.doneCh <- struct{}{}:
+		default:
 		}
 	}
 }

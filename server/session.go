@@ -24,6 +24,7 @@ import (
 
 	"github.com/apex/log"
 	"github.com/ishidawataru/goldp/api"
+	"github.com/ishidawataru/goldp/config"
 	"github.com/ishidawataru/goldp/packet"
 )
 
@@ -99,18 +100,22 @@ func (s FsmState) String() string {
 }
 
 type LDPSession struct {
-	localID ldp.LDPIdentifier
-	peerID  ldp.LDPIdentifier
-	dst     net.IP
-	src     net.IP
-	reqCh   chan *api.Request
-	ConnCh  chan *net.TCPConn
-	conn    *net.TCPConn
-	endCh   chan struct{}
-	msgCh   chan ldp.MessageInterface
-	errCh   chan error
-	state   FsmState
-	reading bool
+	localID      ldp.LDPIdentifier
+	peerID       ldp.LDPIdentifier
+	dst          net.IP
+	src          net.IP
+	reqCh        chan *api.Request
+	ConnCh       chan *net.TCPConn
+	conn         *net.TCPConn
+	endCh        chan struct{}
+	msgCh        chan ldp.MessageInterface
+	errCh        chan error
+	state        FsmState
+	reading      bool
+	gConf        config.Global
+	sConf        config.Session
+	peerInitMsg  *ldp.InitMessage
+	localInitMsg *ldp.InitMessage
 }
 
 func (s *LDPSession) Active() bool {
@@ -186,7 +191,8 @@ func (s *LDPSession) read() {
 			msg, rest, err := ldp.ParseMessage(buf)
 			if err != nil {
 				s.errCh <- err
-				break
+				s.reading = false
+				return
 			}
 			s.msgCh <- msg
 			buf = rest
@@ -207,8 +213,13 @@ func (s *LDPSession) write(msgs ...ldp.MessageInterface) error {
 func (s *LDPSession) buildInitMsg() ldp.MessageInterface {
 	return &ldp.InitMessage{
 		CommonSessionParam: &ldp.CommonSessionParamTLV{
-			ProtocolVersion: ldp.VERSION,
-			KeepAliveTime:   uint16(15),
+			ProtocolVersion:       ldp.VERSION,
+			KeepAliveTime:         uint16(s.sConf.KeepAliveTime),
+			A:                     s.sConf.LabelAdvMode == config.DOD,
+			D:                     s.sConf.LoopDetection,
+			PVLim:                 uint8(s.sConf.PVLim),
+			MaxPDULength:          uint16(s.sConf.MaxPDULength),
+			ReceiverLDPIdentifier: s.peerID,
 		},
 	}
 }
@@ -221,8 +232,40 @@ func nak(code ldp.StatusCode) ldp.MessageInterface {
 	}
 }
 
-func (s *LDPSession) acceptable(msg ldp.MessageInterface) bool {
-	return true
+func (s *LDPSession) AcceptableInit(msg ldp.MessageInterface) (ldp.MessageInterface, bool) {
+	init, ok := msg.(*ldp.InitMessage)
+	if !ok {
+		return nak(ldp.STATUS_SHUTDOWN), false
+	}
+	tlv := init.CommonSessionParam
+	if !tlv.ReceiverLDPIdentifier.Equal(s.localID) {
+		return nak(ldp.STATUS_SESSION_REJECTED_NO_HELLO), false
+	}
+	if tlv.A != (s.sConf.LabelAdvMode == config.DOD) {
+		return nak(ldp.STATUS_SESSION_REJECTED_ADV_MODE), false
+	}
+	// PVLim : The configured maximum Path Vector length.  MUST be 0 if Loop
+	// Detection is disabled (D = 0).
+	if !tlv.D && tlv.PVLim > 0 {
+		return nak(ldp.STATUS_MALFORMED_TLV_VALUE), false
+	}
+	// A value of 255 or less specifies the default maximum length of 4096
+	// octets.
+	//
+	// The receiving LSR MUST calculate the maximum PDU length for the
+	// session by using the smaller of its and its peer's proposals
+	// for Max PDU Length.  The default maximum PDU length applies
+	// before session initialization completes
+	if tlv.MaxPDULength > 255 && s.sConf.MaxPDULength > int(tlv.MaxPDULength) {
+		s.sConf.MaxPDULength = int(tlv.MaxPDULength)
+	}
+	if s.sConf.KeepAliveTime > int(tlv.KeepAliveTime) {
+		s.sConf.KeepAliveTime = int(tlv.KeepAliveTime)
+	}
+	s.peerInitMsg = init
+	m := s.buildInitMsg()
+	s.localInitMsg = m.(*ldp.InitMessage)
+	return m, true
 }
 
 func (s *LDPSession) loop() error {
@@ -234,6 +277,10 @@ func (s *LDPSession) loop() error {
 			if s.conn != nil {
 				s.conn.Close()
 				if s.reading {
+					select {
+					case <-s.msgCh:
+					default:
+					}
 					<-s.errCh
 				}
 				s.conn = nil
@@ -258,9 +305,10 @@ func (s *LDPSession) loop() error {
 					log.Warnf("opensent timeout")
 					next = NON_EXISTENT
 				case msg := <-s.msgCh:
-					if msg.Type() != ldp.MSG_TYPE_INIT || !s.acceptable(msg) {
+					if msg, ok := s.AcceptableInit(msg); !ok {
+						s.write(msg)
 						next = NON_EXISTENT
-					} else if err := s.write(s.buildInitMsg(), &ldp.KeepaliveMessage{}); err != nil {
+					} else if err := s.write(msg, &ldp.KeepAliveMessage{}); err != nil {
 						next = NON_EXISTENT
 					} else {
 						next = OPENREC
@@ -281,10 +329,10 @@ func (s *LDPSession) loop() error {
 				s.write(nak(ldp.STATUS_HOLD_TIMER_EXPIRED))
 				next = NON_EXISTENT
 			case msg := <-s.msgCh:
-				if msg.Type() != ldp.MSG_TYPE_INIT || !s.acceptable(msg) {
-					s.write(nak(ldp.STATUS_SESSION_REJECTED_ADV_MODE))
+				if msg, ok := s.AcceptableInit(msg); !ok {
+					s.write(msg)
 					next = NON_EXISTENT
-				} else if err := s.write(&ldp.KeepaliveMessage{}); err != nil {
+				} else if err := s.write(&ldp.KeepAliveMessage{}); err != nil {
 					next = NON_EXISTENT
 				} else {
 					next = OPENREC
@@ -312,19 +360,23 @@ func (s *LDPSession) loop() error {
 				next = NON_EXISTENT
 			}
 		case OPERATIONAL:
-			t := time.NewTimer(time.Second * 10)
-			k := time.NewTicker(time.Second * 3)
+			d := time.Second * time.Duration(s.sConf.KeepAliveTime)
+			k := time.NewTicker(d)
+			h := time.NewTimer(d * 3)
 			for {
 				select {
 				case <-k.C:
-					if err := s.write(&ldp.KeepaliveMessage{}); err != nil {
+					if err := s.write(&ldp.KeepAliveMessage{}); err != nil {
 						log.Warnf("%s", err)
 						next = NON_EXISTENT
+					} else {
+						log.Debugf("send keepalive")
+						next = OPERATIONAL
 					}
-					next = OPERATIONAL
-				case <-t.C:
+				case <-h.C:
 					log.Warnf("operational timeout")
-					s.write(nak(ldp.STATUS_SHUTDOWN))
+					err := s.write(nak(ldp.STATUS_SHUTDOWN))
+					log.Warnf("err: %s", err)
 					next = NON_EXISTENT
 				case msg := <-s.msgCh:
 					if msg.Type() == ldp.MSG_TYPE_NOTIFICATION {
@@ -333,14 +385,14 @@ func (s *LDPSession) loop() error {
 						next = NON_EXISTENT
 					} else {
 						log.Debugf("recv: %s", msg)
-						t.Reset(time.Second * 10)
+						h.Reset(d * 3)
 						next = OPERATIONAL
 					}
 				case err := <-s.errCh:
 					log.Warnf("%s", err)
 					next = NON_EXISTENT
 				}
-				if next == NON_EXISTENT {
+				if next != OPERATIONAL {
 					break
 				}
 			}
@@ -351,14 +403,24 @@ func (s *LDPSession) loop() error {
 	}
 }
 
-func NewLDPSession(h *hello, routerId string, reqCh chan *api.Request) (*LDPSession, error) {
+func NewLDPSession(h *hello, conf config.Config, reqCh chan *api.Request) (*LDPSession, error) {
 	ip, _, _ := net.SplitHostPort(h.from.String())
 	dst := net.ParseIP(ip)
-	src := net.ParseIP(routerId)
+	src := net.ParseIP(conf.Global.RouterId)
 
-	id, err := ldp.NewLDPIdentifier(fmt.Sprintf("%s:0", routerId))
+	id, err := ldp.NewLDPIdentifier(fmt.Sprintf("%s:0", conf.Global.RouterId))
 	if err != nil {
 		return nil, err
+	}
+
+	sConf := config.Session{
+		LocalId:       id.String(),
+		PeerId:        h.id.String(),
+		KeepAliveTime: conf.Global.KeepAliveTime,
+		MaxPDULength:  conf.Global.MaxPDULength,
+		LoopDetection: conf.Global.LoopDetection,
+		PVLim:         conf.Global.PVLim,
+		LabelAdvMode:  conf.Global.LabelAdvMode,
 	}
 
 	s := &LDPSession{
@@ -372,6 +434,8 @@ func NewLDPSession(h *hello, routerId string, reqCh chan *api.Request) (*LDPSess
 		msgCh:   make(chan ldp.MessageInterface),
 		errCh:   make(chan error),
 		state:   NON_EXISTENT,
+		gConf:   conf.Global,
+		sConf:   sConf,
 	}
 	go s.loop()
 	return s, nil

@@ -503,9 +503,9 @@ func (t *CommonSessionParamTLV) String() string {
 	buf := bytes.NewBuffer(make([]byte, 0, 32))
 	buf.WriteString(fmt.Sprintf("[ SESSION | proto: %d, keep-alive: %d", t.ProtocolVersion, t.KeepAliveTime))
 	if t.A {
-		buf.WriteString(", DoD")
+		buf.WriteString(", downstream-on-demand")
 	} else {
-		buf.WriteString(", DU")
+		buf.WriteString(", downstream-unsolicited")
 	}
 	if t.D {
 		buf.WriteString(fmt.Sprintf(", loop detection(max path length: %d)", t.PVLim))
@@ -600,7 +600,7 @@ func ParseMessage(buf []byte) (MessageInterface, []byte, error) {
 	case MSG_TYPE_INIT:
 		msg = &InitMessage{}
 	case MSG_TYPE_KEEPALIVE:
-		msg = &KeepaliveMessage{}
+		msg = &KeepAliveMessage{}
 	case MSG_TYPE_ADDRESS:
 		msg = &AddressMessage{}
 	case MSG_TYPE_ADDRESS_WITHDRAW:
@@ -623,6 +623,9 @@ type MessageInterface interface {
 	Decode(data []byte) error
 	Serialize() ([]byte, error)
 	Type() MessageType
+	ID() uint32
+	SetID(uint32)
+	String() string
 }
 
 func parseMessage1(data []byte) (uint32, []TLVInterface, error) {
@@ -640,8 +643,20 @@ func parseMessage1(data []byte) (uint32, []TLVInterface, error) {
 	return id, tlvs, nil
 }
 
+type Message struct {
+	id uint32
+}
+
+func (m *Message) ID() uint32 {
+	return m.id
+}
+
+func (m *Message) SetID(id uint32) {
+	m.id = id
+}
+
 type NotificationMessage struct {
-	id           uint32
+	Message
 	Status       *StatusTLV
 	OptionalTLVs []TLVInterface
 }
@@ -682,8 +697,18 @@ func (m *NotificationMessage) Type() MessageType {
 	return MSG_TYPE_NOTIFICATION
 }
 
+func (m *NotificationMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ NOTIF %d | %s", m.ID(), m.Status.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
 type HelloMessage struct {
-	id               uint32
+	Message
 	CommonHelloParam *CommonHelloParamTLV
 	OptionalTLVs     []TLVInterface
 }
@@ -724,16 +749,26 @@ func (m *HelloMessage) Type() MessageType {
 	return MSG_TYPE_HELLO
 }
 
+func (m *HelloMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ HELLO %d | %s", m.ID(), m.CommonHelloParam.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
 func NewHelloMessage(id uint32, param *CommonHelloParamTLV, optionals []TLVInterface) *HelloMessage {
 	return &HelloMessage{
-		id:               id,
+		Message:          Message{id},
 		CommonHelloParam: param,
 		OptionalTLVs:     optionals,
 	}
 }
 
 type InitMessage struct {
-	id                 uint32
+	Message
 	CommonSessionParam *CommonSessionParamTLV
 	OptionalTLVs       []TLVInterface
 }
@@ -774,12 +809,22 @@ func (m *InitMessage) Type() MessageType {
 	return MSG_TYPE_INIT
 }
 
-type KeepaliveMessage struct {
-	id           uint32
+func (m *InitMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ INIT %d | %s", m.ID(), m.CommonSessionParam.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
+type KeepAliveMessage struct {
+	Message
 	OptionalTLVs []TLVInterface
 }
 
-func (m *KeepaliveMessage) Decode(data []byte) error {
+func (m *KeepAliveMessage) Decode(data []byte) error {
 	id, tlvs, err := parseMessage1(data)
 	if err != nil {
 		return err
@@ -789,16 +834,31 @@ func (m *KeepaliveMessage) Decode(data []byte) error {
 	return nil
 }
 
-func (m *KeepaliveMessage) Serialize() ([]byte, error) {
+func (m *KeepAliveMessage) Serialize() ([]byte, error) {
 	return serializeMessage(m.Type(), m.id, nil)
 }
 
-func (m *KeepaliveMessage) Type() MessageType {
+func (m *KeepAliveMessage) Type() MessageType {
 	return MSG_TYPE_KEEPALIVE
 }
 
+func (m *KeepAliveMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ KEEPALIVE %d", m.ID()))
+	for idx, tlv := range m.OptionalTLVs {
+		if idx == 0 {
+			buf.WriteString(" | ")
+		} else {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(tlv.String())
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
 type AddressMessage struct {
-	id           uint32
+	Message
 	List         *AddressListTLV
 	OptionalTLVs []TLVInterface
 }
@@ -839,8 +899,18 @@ func (m *AddressMessage) Type() MessageType {
 	return MSG_TYPE_ADDRESS
 }
 
+func (m *AddressMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ ADDR %d | %s", m.ID(), m.List.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
 type AddressWithdrawMessage struct {
-	id           uint32
+	Message
 	List         *AddressListTLV
 	OptionalTLVs []TLVInterface
 }
@@ -879,6 +949,16 @@ func (m *AddressWithdrawMessage) Serialize() ([]byte, error) {
 
 func (m *AddressWithdrawMessage) Type() MessageType {
 	return MSG_TYPE_ADDRESS_WITHDRAW
+}
+
+func (m *AddressWithdrawMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ ADDR-WITHDRAW %d | %s", m.ID(), m.List.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
 }
 
 type LDPIdentifier []byte

@@ -51,14 +51,17 @@ func main() {
 	ldpServer := server.NewLDPServer()
 	go ldpServer.Serve()
 
+	configManager := config.NewConfigManager(opts.ConfigFile, opts.ConfigType, ldpServer.ReqCh)
+	go configManager.Serve()
+
+	// ensure config via config-file finishes prior to config via zebra
+	configManager.WaitReload()
+
 	zebraClient := server.NewZebraClient("unix", opts.SocketFile, ldpServer.ReqCh)
 	go zebraClient.Serve()
 
 	//	grpcServer := server.NewGrpcServer(opts.GrpcPort, ldpServer.ReqCh)
 	//	go grpcServer.Serve()
-
-	configManager := config.NewConfigManager(opts.ConfigFile, opts.ConfigType, ldpServer.ReqCh)
-	go configManager.Serve()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP)

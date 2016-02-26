@@ -16,6 +16,8 @@
 package server
 
 import (
+	"fmt"
+
 	"github.com/apex/log"
 	"github.com/ishidawataru/goldp/api"
 	"github.com/ishidawataru/goldp/config"
@@ -48,24 +50,55 @@ func (z *ZebraClient) Serve() {
 		log.Debugf("%s", m)
 		switch m.Header.Command {
 		case zebra.ROUTER_ID_UPDATE:
+			ch := make(chan *api.Response)
+			z.reqCh <- &api.Request{
+				Type:  api.GET_GLOBAL,
+				ResCh: ch,
+			}
+			res := <-ch
+			if res.Error != nil {
+				log.Fatalf("%s", res.Error)
+			}
+
+			global := res.Data.(config.Global)
+			if global.RouterId != "" {
+				log.Debugf("router-id is already set")
+				continue
+			}
 			b := m.Body.(*zebra.RouterIDUpdateBody)
-			log.Debugf("send set global")
+			global.RouterId = b.Prefix.String()
+			log.Debugf("global: %s", global)
 			z.reqCh <- &api.Request{
 				Type: api.SET_GLOBAL,
-				Data: config.Global{
-					RouterId: b.Prefix.String(),
-					HoldTime: config.DEFAULT_HOLDTIME,
-				},
+				Data: global,
 				From: api.ZEBRA_CLIENT,
 			}
-		case zebra.INTERFACE_ADD:
+			//		case zebra.INTERFACE_ADD:
 			//			b := m.Body.(*zebra.InterfaceUpdateBody)
-			//			log.Debugf("send interface add")
-			//			intf, err := net.InterfaceByIndex(int(b.Index))
-			//			if err != nil {
-			//				log.Errorf("can't find interface %s", b.Name)
-			//				continue
-			//			}
+			//			log.Debugf("intf %v", res.Data.(config.Interface))
+		case zebra.INTERFACE_ADDRESS_ADD:
+			b := m.Body.(*zebra.InterfaceAddressUpdateBody)
+			ch := make(chan *api.Response)
+			z.reqCh <- &api.Request{
+				Type:  api.GET_INTF,
+				ResCh: ch,
+				Data: config.Interface{
+					Index: int(b.Index),
+				},
+			}
+			res := <-ch
+			if res.Error != nil {
+				log.Debugf("interface %s is not configured", b.Index)
+				continue
+			}
+			z.reqCh <- &api.Request{
+				Type: api.ADD_ADDRESS,
+				Data: config.Interface{
+					Index:     int(b.Index),
+					Addresses: []string{fmt.Sprintf("%s/%d", b.Prefix, b.Length)},
+				},
+			}
+
 			//			if intf.Flags&net.FlagLoopback > 0 {
 			//				continue
 			//			}
