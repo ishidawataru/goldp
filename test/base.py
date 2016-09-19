@@ -129,4 +129,4 @@ class Container(object):
 
     def local(self, cmd, stream=False):
         i = dckr.exec_create(container=self.name, cmd=cmd)
-        return dckr.exec_start(i['Id'], tty=True, stream=stream)
+        return dckr.exec_start(i['Id'], tty=True, stream=stream, socket=True)

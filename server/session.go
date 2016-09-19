@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/ishidawataru/goldp/api"
 	"github.com/ishidawataru/goldp/config"
 	"github.com/ishidawataru/goldp/packet"
 )
@@ -73,17 +72,17 @@ import (
 //                           |   |
 //                           +---+
 
-type FsmState uint8
+type fsmState uint8
 
 const (
-	NON_EXISTENT FsmState = iota
+	NON_EXISTENT fsmState = iota
 	INITIALIZED
 	OPENREC
 	OPENSENT
 	OPERATIONAL
 )
 
-func (s FsmState) String() string {
+func (s fsmState) String() string {
 	switch s {
 	case NON_EXISTENT:
 		return "non-existent"
@@ -104,13 +103,12 @@ type LDPSession struct {
 	peerID       ldp.LDPIdentifier
 	dst          net.IP
 	src          net.IP
-	reqCh        chan *api.Request
 	ConnCh       chan *net.TCPConn
 	conn         *net.TCPConn
 	endCh        chan struct{}
 	msgCh        chan ldp.MessageInterface
 	errCh        chan error
-	state        FsmState
+	state        fsmState
 	reading      bool
 	gConf        config.Global
 	sConf        config.Session
@@ -300,6 +298,7 @@ func (s *LDPSession) AcceptableInit(msg ldp.MessageInterface) (ldp.MessageInterf
 func (s *LDPSession) loop() error {
 	for {
 		cur := s.state
+		log.Debugf("loop: %s", cur)
 		next := NON_EXISTENT
 		switch cur {
 		case NON_EXISTENT:
@@ -393,31 +392,26 @@ func (s *LDPSession) loop() error {
 			k := time.NewTicker(d)
 			h := time.NewTimer(d * 3)
 
-			monCh := make(chan *api.Request, 8)
-			endCh := make(chan struct{}, 1)
-			s.reqCh <- &api.Request{
-				Type:  api.MON_ADDRESS,
-				MonCh: monCh,
-				EndCh: endCh,
-			}
-
-			ch := make(chan *api.Response)
-			s.reqCh <- &api.Request{
-				Type:  api.GET_INTFS,
-				ResCh: ch,
-			}
-
-			next = OPERATIONAL
-			if err := s.write(s.buildAddrMsg((<-ch).Data.([]config.Interface))...); err != nil {
-				log.Warnf("failed to write address messages: %s", err)
-				next = NON_EXISTENT
-			}
+			//			monCh := make(chan *api.Request, 8)
+			//			s.reqCh <- &api.Request{
+			//				Type:  api.MON_ADDRESS,
+			//				MonCh: monCh,
+			//				EndCh: endCh,
+			//			}
+			//
+			//			ch := make(chan *api.Response)
+			//			s.reqCh <- &api.Request{
+			//				Type:  api.GET_INTFS,
+			//				ResCh: ch,
+			//			}
+			//
+			//			next = OPERATIONAL
+			//			if err := s.write(s.buildAddrMsg((<-ch).Data.([]config.Interface))...); err != nil {
+			//				log.Warnf("failed to write address messages: %s", err)
+			//				next = NON_EXISTENT
+			//			}
 
 			for {
-				if next != OPERATIONAL {
-					endCh <- struct{}{}
-					break
-				}
 				select {
 				case <-k.C:
 					if err := s.write(&ldp.KeepAliveMessage{}); err != nil {
@@ -442,8 +436,8 @@ func (s *LDPSession) loop() error {
 						h.Reset(d * 3)
 						next = OPERATIONAL
 					}
-				case msg := <-monCh:
-					log.Debugf("mon: %s", msg)
+					//				case msg := <-monCh:
+					//					log.Debugf("mon: %s", msg)
 				case err := <-s.errCh:
 					log.Warnf("%s", err)
 					next = NON_EXISTENT
@@ -456,7 +450,7 @@ func (s *LDPSession) loop() error {
 	}
 }
 
-func NewLDPSession(h *hello, conf config.Config, reqCh chan *api.Request) (*LDPSession, error) {
+func newLDPSession(h *hello, conf config.Config) (*LDPSession, error) {
 	ip, _, _ := net.SplitHostPort(h.from.String())
 	dst := net.ParseIP(ip)
 	src := net.ParseIP(conf.Global.RouterId)
@@ -481,7 +475,6 @@ func NewLDPSession(h *hello, conf config.Config, reqCh chan *api.Request) (*LDPS
 		peerID:  h.id,
 		dst:     dst.To4(),
 		src:     src.To4(),
-		reqCh:   reqCh,
 		ConnCh:  make(chan *net.TCPConn),
 		endCh:   make(chan struct{}),
 		msgCh:   make(chan ldp.MessageInterface),

@@ -35,6 +35,7 @@ def run(args):
             nw = '10.{0}.0.{1}/30'.format(idx, jdx+1)
             ctn.local('ip addr add {0} dev {1}'.format(nw, ifname))
             ctn.ospf_routes.append(nw)
+            ctn.ldp_interfaces.append(ifname)
 
     for ctn in ctns:
         print 'start', ctn.name

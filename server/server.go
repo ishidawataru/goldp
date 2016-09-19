@@ -18,24 +18,23 @@ package server
 import (
 	"fmt"
 	"net"
+	"sync"
 
 	"golang.org/x/net/ipv4"
 
 	"github.com/apex/log"
-	"github.com/ishidawataru/goldp/api"
 	"github.com/ishidawataru/goldp/config"
 	"github.com/ishidawataru/goldp/packet"
 )
 
 type LDPServer struct {
-	config      config.Config
-	ReqCh       chan *api.Request
-	helloCh     chan *hello
-	connCh      chan *net.TCPConn
-	sessions    map[string]*LDPSession
-	interfaces  map[int]*Interface
-	p           *ipv4.PacketConn
-	monitorReqs []*api.Request
+	config     config.Config
+	helloCh    chan *hello
+	connCh     chan *net.TCPConn
+	sessions   map[string]*LDPSession
+	interfaces map[int]*Interface
+	p          *ipv4.PacketConn
+	m          sync.RWMutex
 }
 
 type hello struct {
@@ -45,177 +44,171 @@ type hello struct {
 	msg     ldp.MessageInterface
 }
 
-func (server *LDPServer) HandleReq(req *api.Request) error {
-	res := &api.Response{}
-	defer func() {
-		if req.ResCh != nil {
-			req.ResCh <- res
-			close(req.ResCh)
+func getIntf(d config.Interface) (*net.Interface, error) {
+	if d.Name != "" {
+		return net.InterfaceByName(d.Name)
+	}
+	if d.Index > 0 {
+		return net.InterfaceByIndex(d.Index)
+	}
+	return nil, fmt.Errorf("specify interface name or index")
+}
+
+func (server *LDPServer) GetConfig() (config.Config, error) {
+	server.m.RLock()
+	defer server.m.RUnlock()
+	return server.config, nil
+}
+
+func (server *LDPServer) StartServer(g config.Global) error {
+	server.m.Lock()
+	defer server.m.Unlock()
+	if server.config.Global.RouterId != "" {
+		return fmt.Errorf("server is already started")
+	}
+
+	if g.RouterId != "" && net.ParseIP(g.RouterId).To4() == nil {
+		return fmt.Errorf("invalid router id")
+	}
+	server.config.Global = g
+
+	for _, i := range server.interfaces {
+		if i.helloing {
+			log.Debugf("end %s helloing", i.i.Name)
+			i.stop()
+		}
+		i.RouterId = g.RouterId
+		i.HoldTime = g.HoldTime
+		if err := i.hello(); err != nil {
+			return err
+		}
+		log.Debugf("start %s helloing", i.i.Name)
+	}
+	go func() {
+		dst, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", g.RouterId, ldp.TCP_PORT))
+		if err != nil {
+			log.Fatalf("%s", err)
+		}
+		ln, err := net.ListenTCP("tcp4", dst)
+		if err != nil {
+			log.Fatalf("%s", err)
+		}
+		for {
+			conn, err := ln.AcceptTCP()
+			if err != nil {
+				log.Fatalf("%s", err)
+			}
+			server.connCh <- conn
 		}
 	}()
+	return nil
+}
 
-	getIntf := func(d config.Interface) (*net.Interface, error) {
-		if d.Name != "" {
-			return net.InterfaceByName(d.Name)
-		}
-		if d.Index > 0 {
-			return net.InterfaceByIndex(d.Index)
-		}
-		return nil, fmt.Errorf("specify interface name or index")
+func (server *LDPServer) StopServer() error {
+	return fmt.Errorf("not implemented yet")
+}
+
+func (server *LDPServer) AddInterface(d config.Interface) error {
+	server.m.Lock()
+	defer server.m.Unlock()
+	intf, err := getIntf(d)
+	if err != nil {
+		return err
+	}
+	if _, y := server.interfaces[intf.Index]; y {
+		return fmt.Errorf("interface %s is already configured", intf.Name)
 	}
 
-	switch req.Type {
-	case api.GET_GLOBAL:
-		res.Data = server.config.Global
-		return nil
-	case api.SET_GLOBAL:
-		// TODO: allow only once
-		global := req.Data.(config.Global)
-		if global.RouterId != "" && net.ParseIP(global.RouterId).To4() == nil {
-			res.Error = fmt.Errorf("invalid router id")
-			return nil
-		}
-		server.config.Global = global
+	d.Name = intf.Name
+	d.Index = intf.Index
+	server.config.Interfaces = append(server.config.Interfaces, d)
 
-		if global.RouterId != "" {
-			for _, i := range server.interfaces {
-				if i.helloing {
-					ch := make(chan struct{})
-					i.endCh <- ch
-					<-ch
-					log.Debugf("end %s helloing", i.i.Name)
-				}
-				i.RouterId = global.RouterId
-				i.HoldTime = global.HoldTime
-				if err := i.Hello(); err != nil {
-					return err
-				}
-				log.Debugf("start %s helloing", i.i.Name)
-			}
-			go func() {
-				dst, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", global.RouterId, ldp.TCP_PORT))
-				if err != nil {
-					log.Fatalf("%s", err)
-				}
-				ln, err := net.ListenTCP("tcp4", dst)
-				if err != nil {
-					log.Fatalf("%s", err)
-				}
-				for {
-					conn, err := ln.AcceptTCP()
-					if err != nil {
-						log.Fatalf("%s", err)
-					}
-					server.connCh <- conn
-				}
-			}()
-		}
-	case api.GET_INTFS:
-		res.Data = server.config.Interfaces
-		return nil
-	case api.GET_INTF:
-		intf, err := getIntf(req.Data.(config.Interface))
-		if err != nil {
-			res.Error = err
-			return nil
-		}
-		for _, c := range server.config.Interfaces {
-			if c.Index == intf.Index {
-				res.Data = c
-				break
-			}
-		}
-		if res.Data == nil {
-			res.Error = fmt.Errorf("not found interface %s(idx %d)", intf.Name, intf.Index)
-		}
-	case api.ADD_INTF:
-		d := req.Data.(config.Interface)
-		intf, err := getIntf(d)
-		if err != nil {
-			res.Error = err
-			return nil
-		}
-		if _, y := server.interfaces[intf.Index]; y {
-			res.Error = fmt.Errorf("interface %s is already configured", intf.Name)
-			return nil
-		}
-
-		d.Name = intf.Name
-		d.Index = intf.Index
-		server.config.Interfaces = append(server.config.Interfaces, d)
-
-		i := &Interface{
-			i:        intf,
-			p:        server.p,
-			endCh:    make(chan chan struct{}),
-			RouterId: server.config.Global.RouterId,
-			HoldTime: server.config.Global.HoldTime,
-		}
-		server.interfaces[intf.Index] = i
-
-		if i.RouterId != "" {
-			if err := i.Hello(); err != nil {
-				return err
-			}
-			log.Debugf("start %s helloing", intf.Name)
-		}
-	case api.DEL_INTF:
-		d := req.Data.(config.Interface)
-		intf, err := getIntf(d)
-		if err != nil {
-			res.Error = err
-			return nil
-		}
-		if i, y := server.interfaces[intf.Index]; !y {
-			res.Error = fmt.Errorf("not found interface %s", intf.Name)
-			return nil
-		} else {
-			i.Stop()
-		}
-	case api.ADD_ADDRESS:
-		d := req.Data.(config.Interface)
-		intf, err := getIntf(d)
-		if err != nil {
-			res.Error = err
-			return nil
-		}
-		for idx, c := range server.config.Interfaces {
-			if c.Index == intf.Index {
-				server.config.Interfaces[idx].Addresses = append(c.Addresses, d.Addresses...)
-				break
-			}
-		}
-		// TODO: handle duplicates
-		// TODO: broadcast the change
-		server.Notify(req)
-	case api.MON_ADDRESS:
-		server.monitorReqs = append(server.monitorReqs, req)
+	i := &Interface{
+		i:        intf,
+		p:        server.p,
+		endCh:    make(chan chan struct{}),
+		RouterId: server.config.Global.RouterId,
+		HoldTime: server.config.Global.HoldTime,
 	}
+	server.interfaces[intf.Index] = i
 
-	log.Infof("cur config: %v", server.config)
+	if server.config.Global.RouterId != "" {
+		if err := i.hello(); err != nil {
+			return err
+		}
+		log.Debugf("start %s helloing", intf.Name)
+	} else {
+		log.Debugf("delayed helloing, server is not started")
+	}
 
 	return nil
 }
 
-func (server *LDPServer) Notify(news *api.Request) {
-	remainReqs := make([]*api.Request, 0, len(server.monitorReqs))
-	for _, req := range server.monitorReqs {
-		do := false
-		switch {
-		case req.Type == api.MON_ADDRESS && (news.Type == api.ADD_ADDRESS || news.Type == api.DEL_ADDRESS):
-			do = true
-		}
-		if do {
-			select {
-			case <-req.EndCh:
-			case req.MonCh <- news:
-				remainReqs = append(remainReqs, req)
-			default:
-				remainReqs = append(remainReqs, req)
+func (server *LDPServer) DeleteInterface(d config.Interface) error {
+	server.m.Lock()
+	defer server.m.Unlock()
+
+	intf, err := getIntf(d)
+	if err != nil {
+		return err
+	}
+	if i, y := server.interfaces[intf.Index]; !y {
+		return fmt.Errorf("not found interface %s", intf.Name)
+	} else {
+		i.stop()
+		delete(server.interfaces, intf.Index)
+		intfs := make([]config.Interface, 0, len(server.config.Interfaces))
+		for _, c := range server.config.Interfaces {
+			if c.Name == i.i.Name {
+				continue
 			}
+			intfs = append(intfs, c)
+		}
+		server.config.Interfaces = intfs
+	}
+	return nil
+}
+
+func (server *LDPServer) ListInterface() ([]config.Interface, error) {
+	server.m.RLock()
+	defer server.m.RUnlock()
+
+	return server.config.Interfaces, nil
+}
+
+func (server *LDPServer) GetInterface(d config.Interface) (*Interface, error) {
+	server.m.RLock()
+	defer server.m.RUnlock()
+
+	i, err := getIntf(d)
+	if err != nil {
+		return nil, err
+	}
+	intf, ok := server.interfaces[i.Index]
+	if ok {
+		return intf, nil
+	}
+	return nil, fmt.Errorf("not found interface %s", i.Name)
+}
+
+func (server *LDPServer) AddInterfaceAddress(d config.Interface) error {
+	server.m.Lock()
+	defer server.m.Unlock()
+
+	intf, err := getIntf(d)
+	if err != nil {
+		return err
+	}
+	for idx, c := range server.config.Interfaces {
+		if c.Index == intf.Index {
+			server.config.Interfaces[idx].Addresses = append(c.Addresses, d.Addresses...)
+			break
 		}
 	}
-	server.monitorReqs = remainReqs
+	// TODO: handle duplicates
+	// TODO: broadcast the change
+	//	server.Notify(req)
+	return nil
 }
 
 func (server *LDPServer) Serve() {
@@ -260,17 +253,14 @@ func (server *LDPServer) Serve() {
 
 	for {
 		select {
-		case req := <-server.ReqCh:
-			if err := server.HandleReq(req); err != nil {
-				log.Fatalf("%s", err)
-			}
 		case h := <-server.helloCh:
 			id, _ := ldp.NewLDPIdentifier(fmt.Sprintf("%s:0", server.config.Global.RouterId))
 			if h.id.Equal(id) {
 				continue
 			}
+			server.m.Lock()
 			if _, y := server.sessions[h.from.IP.String()]; !y {
-				s, err := NewLDPSession(h, server.config, server.ReqCh)
+				s, err := newLDPSession(h, server.config)
 				if err != nil {
 					log.Fatalf("%s", err)
 				}
@@ -281,6 +271,7 @@ func (server *LDPServer) Serve() {
 			// If LSR1 cannot find a matching Hello adjacency, it sends a
 			// Session Rejected/No Hello Error Notification message and
 			// closes the TCP connection.
+			server.m.Lock()
 			if s, y := server.sessions[from]; !y {
 				log.Warnf("not configured neighbor %s", from)
 				c.Close()
@@ -296,17 +287,16 @@ func (server *LDPServer) Serve() {
 				log.Warnf("closed incoming connection from %s to avoid blocking", from)
 			}
 		}
+		server.m.Unlock()
 	}
 }
 
 func NewLDPServer() *LDPServer {
 	return &LDPServer{
-		config:      config.Config{},
-		ReqCh:       make(chan *api.Request, 8),
-		helloCh:     make(chan *hello),
-		connCh:      make(chan *net.TCPConn),
-		sessions:    make(map[string]*LDPSession),
-		interfaces:  make(map[int]*Interface),
-		monitorReqs: make([]*api.Request, 0),
+		config:     config.Config{},
+		helloCh:    make(chan *hello),
+		connCh:     make(chan *net.TCPConn),
+		sessions:   make(map[string]*LDPSession),
+		interfaces: make(map[int]*Interface),
 	}
 }

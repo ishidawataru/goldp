@@ -22,18 +22,20 @@ import (
 
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
-	"github.com/ishidawataru/goldp/config"
+	api "github.com/ishidawataru/goldp/api"
 	"github.com/ishidawataru/goldp/server"
 	"github.com/jessevdk/go-flags"
 )
 
 func main() {
 	var opts struct {
-		GrpcPort   int    `short:"g" long:"grpc-port" description:"grpc port" default:"50052"`
-		LogLevel   string `short:"l" long:"log-level" description:"log level" default:"info"`
-		ConfigFile string `short:"f" long:"config-file" description:"specifying a config file"`
-		ConfigType string `short:"t" long:"config-type" description:"specifying config type (toml, yaml, json)" default:"yaml"`
-		SocketFile string `short:"z" long:"socket-file" description:"zapi unix domain socket" default:"/var/run/quagga/zserv.api"`
+		DisableGRPC bool   `long:"disable-grpc" description:"disable grpc api server"`
+		GRPCHosts   string `long:"grpc-hosts" description:"grpc port" default:":50052"`
+		LogLevel    string `short:"l" long:"log-level" description:"log level" default:"info"`
+		ConfigFile  string `short:"f" long:"config-file" description:"specifying a config file"`
+		ConfigType  string `short:"t" long:"config-type" description:"specifying config type (toml, yaml, json)" default:"yaml"`
+		EnableZebra bool   `long:"enable-zebra" description:"enable zebra"`
+		SocketFile  string `long:"zebra-socket-file" description:"zapi unix domain socket" default:"/var/run/quagga/zserv.api"`
 	}
 
 	log.SetHandler(cli.Default)
@@ -51,25 +53,35 @@ func main() {
 	ldpServer := server.NewLDPServer()
 	go ldpServer.Serve()
 
-	configManager := config.NewConfigManager(opts.ConfigFile, opts.ConfigType, ldpServer.ReqCh)
-	go configManager.Serve()
+	if opts.ConfigFile != "" {
+		configManager := server.NewConfigManager(opts.ConfigFile, opts.ConfigType, ldpServer)
+		go configManager.Serve()
 
-	// ensure config via config-file finishes prior to config via zebra
-	configManager.WaitReload()
+		// ensure config via config-file finishes prior to config via zebra
+		configManager.WaitReload()
 
-	zebraClient := server.NewZebraClient("unix", opts.SocketFile, ldpServer.ReqCh)
-	go zebraClient.Serve()
-
-	//	grpcServer := server.NewGrpcServer(opts.GrpcPort, ldpServer.ReqCh)
-	//	go grpcServer.Serve()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGHUP)
-
-	for {
-		switch <-sigCh {
-		case syscall.SIGHUP:
-			configManager.ReloadCh <- struct{}{}
-		}
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGHUP)
+		go func() {
+			for {
+				switch <-sigCh {
+				case syscall.SIGHUP:
+					configManager.ReloadCh <- struct{}{}
+				}
+			}
+		}()
 	}
+
+	if opts.EnableZebra {
+		zebraClient := server.NewZebraClient("unix", opts.SocketFile, ldpServer)
+		go zebraClient.Serve()
+	}
+
+	if !opts.DisableGRPC {
+		grpcServer := api.NewGRPCServer(opts.GRPCHosts, ldpServer)
+		go grpcServer.Serve()
+	}
+
+	ch := make(chan struct{})
+	<-ch
 }

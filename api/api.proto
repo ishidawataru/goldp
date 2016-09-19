@@ -1,0 +1,111 @@
+// Copyright (C) 2016 Nippon Telegraph and Telephone Corporation.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package goldpapi;
+
+service GoldpApi {
+    rpc StartServer(StartServerRequest) returns (StartServerResponse) {}
+    rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
+    rpc GetServer(GetServerRequest) returns (GetServerResponse) {}
+//    rpc AddInterface(AddInterfaceRequest) returns (AddInterfaceResponse) {}
+//    rpc DeleteInterface(DeleteInterfaceRequest) returns (DeleteInterfaceResponse) {}
+//    rpc ListInterface(ListInterfaceRequest) returns (ListInterfaceResponse) {}
+//    rpc ListSession(ListSessionRequest) returns (ListSessionResponse) {}
+}
+
+message StartServerRequest  {
+    Server server = 1;
+}
+
+message StartServerResponse {
+    Server server = 1;
+}
+
+message StopServerRequest  {
+}
+
+message StopServerResponse {
+    Server server = 1;
+}
+
+message GetServerRequest  {
+}
+
+message GetServerResponse {
+    Server server = 1;
+}
+
+message AddInterfaceRequest  {
+    Interface interface = 1;
+}
+
+message AddInterfaceResponse {
+    Interface interface = 1;
+}
+
+message DeleteInterfaceRequest  {
+    Interface interface = 1;
+}
+
+message DeleteInterfaceResponse {
+    Interface interface = 1;
+}
+
+message ListInterfaceRequest  {
+}
+
+message ListInterfaceResponse {
+    repeated Interface interfaces = 1;
+}
+
+message ListSessionRequest {
+}
+
+message ListSessionResponse {
+    repeated Session sessions = 1;
+}
+
+enum LabelAdvMode {
+    DOD = 0;
+    DU = 1;
+}
+
+message Server {
+    string router_id = 1;
+    uint32 hold_time = 2;
+    string local_address = 3;
+    uint32 hello_interval = 4;
+    uint32 keep_alive_time = 5;
+    uint32 max_pdu_length = 6;
+    bool loop_detection = 7;
+    uint32 path_vector_limit = 8;
+    LabelAdvMode label_adv_mode = 9;
+}
+
+message Interface {
+    string name = 1;
+}
+
+message Session {
+    string peer_id = 1;
+    string router_id = 2;
+    uint32 keep_alive_time = 3;
+    uint32 max_pdu_length = 4;
+    bool loop_detection = 5;
+    uint32 path_vector_limit = 6;
+    LabelAdvMode label_adv_mode = 7;
+}

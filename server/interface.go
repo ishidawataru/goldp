@@ -30,12 +30,12 @@ type Interface struct {
 	i        *net.Interface
 	p        *ipv4.PacketConn
 	endCh    chan chan struct{}
-	RouterId string
-	HoldTime int
+	routerId string
+	holdTime int
 	helloing bool
 }
 
-func (i *Interface) Hello() error {
+func (i *Interface) hello() error {
 	if i.helloing {
 		return fmt.Errorf("already sending hellos")
 	}
@@ -43,8 +43,12 @@ func (i *Interface) Hello() error {
 	if err := i.p.JoinGroup(i.i, dst); err != nil {
 		return err
 	}
+	src, _ := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", i.routerId, ldp.UDP_PORT))
+	if err := i.p.ExcludeSourceSpecificGroup(i.i, dst, src); err != nil {
+		return err
+	}
 
-	id, err := ldp.NewLDPIdentifier(fmt.Sprintf("%s:0", i.RouterId))
+	id, err := ldp.NewLDPIdentifier(fmt.Sprintf("%s:0", i.routerId))
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
@@ -63,7 +67,7 @@ func (i *Interface) Hello() error {
 				close(ch)
 				return
 			}
-			tlv := ldp.NewCommonHelloParamTLV(uint16(i.HoldTime), false, true)
+			tlv := ldp.NewCommonHelloParamTLV(uint16(i.holdTime), false, true)
 			msg := ldp.NewHelloMessage(200, tlv, nil)
 			pdu := ldp.NewPDU(id, msg)
 			buf, err := pdu.Serialize()
@@ -75,7 +79,7 @@ func (i *Interface) Hello() error {
 				// advertise the same label space.  This requirement ensures that two
 				// LSRs linked by multiple Hello adjacencies using the same label spaces
 				// play the same connection establishment role for each adjacency.
-				Src:     net.ParseIP(i.RouterId),
+				Src:     net.ParseIP(i.routerId),
 				IfIndex: i.i.Index,
 			}
 			if _, err := i.p.WriteTo(buf, cm, dst); err != nil {
@@ -86,7 +90,7 @@ func (i *Interface) Hello() error {
 	return nil
 }
 
-func (i *Interface) Stop() {
+func (i *Interface) stop() {
 	ch := make(chan struct{})
 	i.endCh <- ch
 	<-ch

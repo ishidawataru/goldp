@@ -16,15 +16,17 @@
 from base import *
 import os
 import tarfile
+import yaml
 
 class GoLDP(Container):
     def __init__(self, name, router_id, host_dir, guest_dir='/root/config', image='goldp/goldp'):
         self.router_id = router_id
         self.ospf_routes = ['{0}/32'.format(router_id)]
+        self.ldp_interfaces = []
         super(GoLDP, self).__init__(name, image, host_dir, guest_dir)
 
     @classmethod
-    def build_image(cls, force=False, tag='goldp/goldp', from_image='golang:1.6', checkout='HEAD', nocache=False):
+    def build_image(cls, force=False, tag='goldp/goldp', from_image='golang:1.7', checkout='HEAD', nocache=False):
         cls.dockerfile = '''
 FROM {0}
 WORKDIR /root
@@ -77,9 +79,15 @@ log file /tmp/ospfd.log
 '''.format(self.name, '\n'.join('network {0} area 0.0.0.0'.format(nw) for nw in self.ospf_routes))
             f.write(config)
 
+    def write_goldpd_config(self):
+        with open('{0}/ldpd.conf'.format(self.host_dir), 'w') as f:
+            config = {'interfaces': [{'name': name} for name in self.ldp_interfaces]}
+            f.write(yaml.dump(config))
+
     def start(self):
         self.write_zebra_config()
         self.write_ospfd_config()
+        self.write_goldpd_config()
 
         startup = '''#!/bin/bash
 cp {0}/zebra.conf /etc/quagga
@@ -87,10 +95,11 @@ chown quagga:quagga /etc/quagga/zebra.conf
 cp {0}/ospfd.conf /etc/quagga
 chown quagga:quagga /etc/quagga/ospfd.conf
 service quagga start
+goldpd --enable-zebra -f {0}/ldpd.conf -l debug > {0}/goldpd.log 2>&1
 '''.format(self.guest_dir)
         filename = '{0}/start.sh'.format(self.host_dir)
         with open(filename, 'w') as f:
             f.write(startup)
         os.chmod(filename, 0777)
         i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir), tty=True)
-        dckr.exec_start(i['Id'], detach=True, tty=True)
+        dckr.exec_start(i['Id'], detach=True, tty=True, socket=True)
