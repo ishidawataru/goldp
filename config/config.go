@@ -25,6 +25,9 @@ const (
 	DEFAULT_MAX_PDU_LENGTH  = 4096
 )
 
+// maybe it is good idea to hold all value as string
+// to distinguish the value is not specified by the user ("")
+
 type Session struct {
 	LocalId       string       `mapstructure:"local-id"`
 	PeerId        string       `mapstructure:"peer-id"`
@@ -33,6 +36,8 @@ type Session struct {
 	LoopDetection bool         `mapstructure:"loop-detection"`
 	PVLim         int          `mapstructure:"path-vector-limit"`
 	LabelAdvMode  LabelAdvMode `mapstructure:"label-adv-mode"`
+	PrevFSMState  string       `mapstructure:"prev-fsm-state"`
+	FSMState      string       `mapstructure:"fsm-state"`
 }
 
 type Interface struct {

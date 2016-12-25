@@ -25,6 +25,7 @@ import (
 	"github.com/apex/log"
 	"github.com/ishidawataru/goldp/config"
 	"github.com/ishidawataru/goldp/packet"
+	"gopkg.in/tomb.v2"
 )
 
 // RFC5036 2.5.4. Initialization State Machine
@@ -99,21 +100,24 @@ func (s fsmState) String() string {
 }
 
 type LDPSession struct {
-	localID      ldp.LDPIdentifier
-	peerID       ldp.LDPIdentifier
-	dst          net.IP
-	src          net.IP
-	ConnCh       chan *net.TCPConn
-	conn         *net.TCPConn
-	endCh        chan struct{}
-	msgCh        chan ldp.MessageInterface
-	errCh        chan error
-	state        fsmState
-	reading      bool
-	gConf        config.Global
-	sConf        config.Session
-	peerInitMsg  *ldp.InitMessage
-	localInitMsg *ldp.InitMessage
+	t               tomb.Tomb
+	readT           tomb.Tomb
+	s               *Server
+	localID         ldp.LDPIdentifier
+	peerID          ldp.LDPIdentifier
+	dst             net.IP
+	src             net.IP
+	ConnCh          chan *net.TCPConn
+	conn            *net.TCPConn
+	msgCh           chan ldp.MessageInterface
+	errCh           chan error
+	state           fsmState
+	gConf           config.Global
+	sConf           config.Session
+	peerInitMsg     *ldp.InitMessage
+	localInitMsg    *ldp.InitMessage
+	ifindex         int
+	connectInterval int
 }
 
 func (s *LDPSession) Active() bool {
@@ -125,17 +129,20 @@ func (s *LDPSession) tryConnect() error {
 		log.Debug("already have connection")
 		return fmt.Errorf("aleady have connection")
 	}
-	interval := 1
-	go func() {
+	if s.connectInterval < 1 {
+		s.connectInterval = 1
+	} else if s.connectInterval < 30 {
+		s.connectInterval *= 2
+	}
+	log.Debugf("try connect (sleep %d sec)", s.connectInterval)
+	s.t.Go(func() error {
 		for {
-			timer := time.NewTimer(time.Duration(interval) * time.Second)
-			if interval < 30 {
-				interval *= 2
-			}
+			timer := time.NewTimer(time.Duration(s.connectInterval) * time.Second)
 			select {
 			case <-timer.C:
-			case <-s.endCh:
-				return
+			case <-s.t.Dying():
+				log.Debug("try connect dying")
+				return nil
 			}
 
 			src, _ := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:0", s.src.String()))
@@ -144,12 +151,17 @@ func (s *LDPSession) tryConnect() error {
 			if err == nil {
 				log.Debug("connected")
 				s.ConnCh <- conn
-				return
+				return nil
 			} else {
 				log.Debugf("%s", err)
 			}
+
+			if s.connectInterval < 30 {
+				s.connectInterval *= 2
+			}
+			log.Debugf("try connect (sleep %d sec)", s.connectInterval)
 		}
-	}()
+	})
 	return nil
 }
 
@@ -162,43 +174,57 @@ func readAll(conn net.Conn, length int) ([]byte, error) {
 	return buf, nil
 }
 
-func (s *LDPSession) read() {
-	s.reading = true
+func (s *LDPSession) read() error {
 	for {
 		buf, err := readAll(s.conn, ldp.HEADER_SIZE)
 		if err != nil {
-			s.errCh <- err
-			s.reading = false
-			return
+			select {
+			case s.errCh <- err:
+			case <-s.t.Dying():
+			}
+			return nil
 		}
 		hdr, err := ldp.ParseHeader(buf)
 		if err != nil {
-			s.errCh <- err
-			s.reading = false
-			return
+			select {
+			case s.errCh <- err:
+			case <-s.t.Dying():
+			}
+			return nil
 		}
 		// hdr.Length includes the length of LDPIdentifier(len: 6)
 		// which is contained in ldp header
 		buf, err = readAll(s.conn, int(hdr.Length)-6)
 		if err != nil {
-			s.errCh <- err
-			s.reading = false
-			return
+			select {
+			case s.errCh <- err:
+			case <-s.t.Dying():
+			}
+			return nil
 		}
 		for len(buf) > 0 {
 			msg, rest, err := ldp.ParseMessage(buf)
 			if err != nil {
-				s.errCh <- err
-				s.reading = false
-				return
+				select {
+				case s.errCh <- err:
+				case <-s.t.Dying():
+				}
+				return nil
 			}
-			s.msgCh <- msg
+			select {
+			case s.msgCh <- msg:
+			case <-s.t.Dying():
+				return nil
+			}
 			buf = rest
 		}
 	}
 }
 
 func (s *LDPSession) write(msgs ...ldp.MessageInterface) error {
+	if len(msgs) == 0 {
+		return nil
+	}
 	pdu := ldp.NewPDU(s.localID, msgs...)
 	buf, err := pdu.Serialize()
 	if err != nil {
@@ -222,12 +248,13 @@ func (s *LDPSession) buildInitMsg() ldp.MessageInterface {
 	}
 }
 
+// one session could contain multiple interfaces
 func (s *LDPSession) buildAddrMsg(c []config.Interface) []ldp.MessageInterface {
 	ipv4 := make([]net.IP, 0, len(c))
 	ipv6 := make([]net.IP, 0, len(c))
 	for _, i := range c {
 		for _, a := range i.Addresses {
-			ip, _, _ := net.ParseCIDR(a)
+			ip := net.ParseIP(a)
 			if ip.To4() != nil {
 				ipv4 = append(ipv4, ip)
 			} else {
@@ -235,19 +262,24 @@ func (s *LDPSession) buildAddrMsg(c []config.Interface) []ldp.MessageInterface {
 			}
 		}
 	}
+	log.Infof("ipv4: %v, ipv6: %v", ipv4, ipv6)
 	msgs := make([]ldp.MessageInterface, 0, 2)
-	msgs = append(msgs, &ldp.AddressMessage{
-		List: &ldp.AddressListTLV{
-			Family: ldp.AFI_IP,
-			List:   ipv4,
-		},
-	})
-	msgs = append(msgs, &ldp.AddressMessage{
-		List: &ldp.AddressListTLV{
-			Family: ldp.AFI_IP6,
-			List:   ipv6,
-		},
-	})
+	if len(ipv4) > 0 {
+		msgs = append(msgs, &ldp.AddressMessage{
+			List: &ldp.AddressListTLV{
+				Family: ldp.AFI_IP,
+				List:   ipv4,
+			},
+		})
+	}
+	if len(ipv6) > 0 {
+		msgs = append(msgs, &ldp.AddressMessage{
+			List: &ldp.AddressListTLV{
+				Family: ldp.AFI_IP6,
+				List:   ipv6,
+			},
+		})
+	}
 	return msgs
 }
 
@@ -295,6 +327,52 @@ func (s *LDPSession) AcceptableInit(msg ldp.MessageInterface) (ldp.MessageInterf
 	return m, true
 }
 
+func (s *LDPSession) sendMapping(label int, fec ...string) error {
+	return nil
+}
+
+func (s *LDPSession) handleMsg(msg ldp.MessageInterface) error {
+	switch msg.Type() {
+	case ldp.MSG_TYPE_KEEPALIVE:
+	case ldp.MSG_TYPE_ADDRESS:
+		m := msg.(*ldp.AddressMessage)
+		addrs := make([]string, 0, len(m.List.List))
+		for _, a := range m.List.List {
+			addrs = append(addrs, a.String())
+		}
+		return s.s.addNexthop(s.peerID, addrs...)
+	case ldp.MSG_TYPE_ADDRESS_WITHDRAW:
+		m := msg.(*ldp.AddressWithdrawMessage)
+		addrs := make([]string, 0, len(m.List.List))
+		for _, a := range m.List.List {
+			addrs = append(addrs, a.String())
+		}
+		return s.s.delNexthop(s.peerID, addrs...)
+	case ldp.MSG_TYPE_LABEL_MAPPING:
+		m := msg.(*ldp.LabelMappingMessage)
+		addrs := make([]string, 0, len(m.FEC.Elements))
+		for _, a := range m.FEC.Elements {
+			addrs = append(addrs, a.Prefix.String())
+		}
+		label := m.Label.Label
+		// TODO msg id handling
+		return s.s.addRemoteLabelMapping(s.peerID, label, addrs...)
+	case ldp.MSG_TYPE_LABEL_REQUEST:
+		m := msg.(*ldp.LabelRequestMessage)
+		addrs := make([]string, 0, len(m.FEC.Elements))
+		for _, a := range m.FEC.Elements {
+			addrs = append(addrs, a.Prefix.String())
+		}
+		// TODO msg id handling
+		return s.s.requestMapping(s.peerID, addrs...)
+	case ldp.MSG_TYPE_LABEL_WITHDRAW:
+		//		if len(m.FEC.Elements) == 1 && m.FEC.Elements[0].Type == ldp.FEC_WILDCARD {
+		//		    return s.s.
+		//		}
+	}
+	return nil
+}
+
 func (s *LDPSession) loop() error {
 	for {
 		cur := s.state
@@ -304,20 +382,21 @@ func (s *LDPSession) loop() error {
 		case NON_EXISTENT:
 			if s.conn != nil {
 				s.conn.Close()
-				if s.reading {
-					select {
-					case <-s.msgCh:
-					default:
-					}
-					<-s.errCh
-				}
+				s.readT.Kill(nil)
+				s.readT.Wait()
+				s.readT = tomb.Tomb{}
 				s.conn = nil
 			}
 			if s.Active() {
 				s.tryConnect()
 			}
-			s.conn = <-s.ConnCh
-			go s.read()
+			select {
+			case s.conn = <-s.ConnCh:
+			case <-s.t.Dying():
+				log.Debug("loop() dying")
+				return nil
+			}
+			s.readT.Go(s.read)
 			next = INITIALIZED
 		case INITIALIZED:
 			if s.Active() {
@@ -344,6 +423,10 @@ func (s *LDPSession) loop() error {
 				case err := <-s.errCh:
 					log.Warnf("%s", err)
 					next = NON_EXISTENT
+				case <-s.t.Dying():
+					s.conn.Close()
+					log.Debug("loop() dying")
+					return nil
 				}
 			}
 		case OPENSENT:
@@ -368,6 +451,10 @@ func (s *LDPSession) loop() error {
 			case err := <-s.errCh:
 				log.Warnf("%s", err)
 				next = NON_EXISTENT
+			case <-s.t.Dying():
+				s.conn.Close()
+				log.Debug("loop() dying")
+				return nil
 			}
 		case OPENREC:
 			t := time.NewTimer(time.Second * 10)
@@ -386,30 +473,28 @@ func (s *LDPSession) loop() error {
 			case err := <-s.errCh:
 				log.Warnf("%s", err)
 				next = NON_EXISTENT
+			case <-s.t.Dying():
+				s.conn.Close()
+				log.Debug("loop() dying")
+				return nil
 			}
 		case OPERATIONAL:
+			s.connectInterval = 0
 			d := time.Second * time.Duration(s.sConf.KeepAliveTime)
 			k := time.NewTicker(d)
 			h := time.NewTimer(d * 3)
 
-			//			monCh := make(chan *api.Request, 8)
-			//			s.reqCh <- &api.Request{
-			//				Type:  api.MON_ADDRESS,
-			//				MonCh: monCh,
-			//				EndCh: endCh,
-			//			}
-			//
-			//			ch := make(chan *api.Response)
-			//			s.reqCh <- &api.Request{
-			//				Type:  api.GET_INTFS,
-			//				ResCh: ch,
-			//			}
-			//
-			//			next = OPERATIONAL
-			//			if err := s.write(s.buildAddrMsg((<-ch).Data.([]config.Interface))...); err != nil {
-			//				log.Warnf("failed to write address messages: %s", err)
-			//				next = NON_EXISTENT
-			//			}
+			i, err := s.s.GetInterface(config.Interface{Index: s.ifindex})
+			if err != nil {
+				next = NON_EXISTENT
+				break
+			}
+
+			if err := s.write(s.buildAddrMsg([]config.Interface{i})...); err != nil {
+				log.Warnf("failed to write address messages: %s", err)
+				next = NON_EXISTENT
+				break
+			}
 
 			for {
 				select {
@@ -433,24 +518,55 @@ func (s *LDPSession) loop() error {
 						next = NON_EXISTENT
 					} else {
 						log.Debugf("recv: %s", msg)
-						h.Reset(d * 3)
-						next = OPERATIONAL
+						if err := s.handleMsg(msg); err != nil {
+							log.Warnf("err: %s", err)
+							next = NON_EXISTENT
+						} else {
+							h.Reset(d * 3)
+							next = OPERATIONAL
+						}
 					}
 					//				case msg := <-monCh:
 					//					log.Debugf("mon: %s", msg)
 				case err := <-s.errCh:
 					log.Warnf("%s", err)
 					next = NON_EXISTENT
+				case <-s.t.Dying():
+					s.conn.Close()
+					log.Debug("loop() dying")
+					return nil
+				}
+
+				if next != OPERATIONAL {
+					break
 				}
 			}
 		}
 
 		log.Infof("fsm %s state transition: %s -> %s", s.peerID, cur, next)
+		s.sConf.PrevFSMState = cur.String()
+		s.sConf.FSMState = next.String()
+		s.s.monitorServer.emit(EVENT_SESSION_UPDATE, s.ToConfig())
 		s.state = next
 	}
 }
 
-func newLDPSession(h *hello, conf config.Config) (*LDPSession, error) {
+func (s *LDPSession) ToConfig() config.Session {
+	return s.sConf
+}
+
+func (s *LDPSession) stop() {
+	s.t.Kill(nil)
+	s.t.Wait()
+	if s.conn != nil {
+		s.conn.Close()
+		s.readT.Kill(nil)
+		s.readT.Wait()
+	}
+}
+
+func newLDPSession(h *hello, server *Server) (*LDPSession, error) {
+	conf := server.config
 	ip, _, _ := net.SplitHostPort(h.from.String())
 	dst := net.ParseIP(ip)
 	src := net.ParseIP(conf.Global.RouterId)
@@ -476,13 +592,14 @@ func newLDPSession(h *hello, conf config.Config) (*LDPSession, error) {
 		dst:     dst.To4(),
 		src:     src.To4(),
 		ConnCh:  make(chan *net.TCPConn),
-		endCh:   make(chan struct{}),
 		msgCh:   make(chan ldp.MessageInterface),
 		errCh:   make(chan error),
 		state:   NON_EXISTENT,
 		gConf:   conf.Global,
 		sConf:   sConf,
+		ifindex: h.ifindex,
+		s:       server,
 	}
-	go s.loop()
+	s.t.Go(s.loop)
 	return s, nil
 }

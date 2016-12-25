@@ -25,11 +25,11 @@ import (
 
 type ZebraClient struct {
 	cli       *zebra.Client
-	ldpServer *LDPServer
+	ldpServer *Server
 }
 
-func NewZebraClient(network, address string, ldpServer *LDPServer) *ZebraClient {
-	cli, err := zebra.NewClient(network, address, zebra.ROUTE_BGP)
+func NewZebraClient(network, address string, ldpServer *Server) *ZebraClient {
+	cli, err := zebra.NewClient(network, address, zebra.ROUTE_BGP, 2)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
@@ -42,7 +42,7 @@ func NewZebraClient(network, address string, ldpServer *LDPServer) *ZebraClient 
 func (z *ZebraClient) Serve() {
 	z.cli.SendRouterIDAdd()
 	z.cli.SendInterfaceAdd()
-	z.cli.SendRedistribute(zebra.ROUTE_OSPF)
+	z.cli.SendRedistribute(zebra.ROUTE_OSPF, 0)
 
 	for {
 		m := <-z.cli.Receive()
@@ -53,10 +53,11 @@ func (z *ZebraClient) Serve() {
 			global := config.Global{}
 			config.SetGlobalDefault(&global)
 			global.RouterId = b.Prefix.String()
-			err := z.ldpServer.StartServer(global)
+			s, err := z.ldpServer.StartServer(global)
 			if err != nil {
 				log.Warnf("%s", err)
 			}
+			z.ldpServer = s
 			//		case zebra.INTERFACE_ADD:
 			//			b := m.Body.(*zebra.InterfaceUpdateBody)
 		case zebra.INTERFACE_ADDRESS_ADD:

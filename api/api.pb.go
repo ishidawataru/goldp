@@ -23,6 +23,20 @@ It has these top-level messages:
 	ListInterfaceResponse
 	ListSessionRequest
 	ListSessionResponse
+	AddInterfaceAddressRequest
+	AddInterfaceAddressResponse
+	DeleteInterfaceAddressRequest
+	DeleteInterfaceAddressResponse
+	AddLocalLabelMappingRequest
+	AddLocalLabelMappingResponse
+	DeleteLocalLabelMappingRequest
+	DeleteLocalLabelMappingResponse
+	GetLocalLabelMappingRequest
+	GetLocalLabelMappingResponse
+	GetRemoteLabelMappingRequest
+	GetRemoteLabelMappingResponse
+	MonitorSessionRequest
+	MonitorSessionResponse
 	Server
 	Interface
 	Session
@@ -69,6 +83,32 @@ func (x LabelAdvMode) String() string {
 	return proto.EnumName(LabelAdvMode_name, int32(x))
 }
 func (LabelAdvMode) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
+
+type MonitorSessionResponse_Type int32
+
+const (
+	MonitorSessionResponse_ADD    MonitorSessionResponse_Type = 0
+	MonitorSessionResponse_DEL    MonitorSessionResponse_Type = 1
+	MonitorSessionResponse_UPDATE MonitorSessionResponse_Type = 2
+)
+
+var MonitorSessionResponse_Type_name = map[int32]string{
+	0: "ADD",
+	1: "DEL",
+	2: "UPDATE",
+}
+var MonitorSessionResponse_Type_value = map[string]int32{
+	"ADD":    0,
+	"DEL":    1,
+	"UPDATE": 2,
+}
+
+func (x MonitorSessionResponse_Type) String() string {
+	return proto.EnumName(MonitorSessionResponse_Type_name, int32(x))
+}
+func (MonitorSessionResponse_Type) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor0, []int{27, 0}
+}
 
 type StartServerRequest struct {
 	Server *Server `protobuf:"bytes,1,opt,name=server" json:"server,omitempty"`
@@ -262,6 +302,216 @@ func (m *ListSessionResponse) GetSessions() []*Session {
 	return nil
 }
 
+type AddInterfaceAddressRequest struct {
+	Interface *Interface `protobuf:"bytes,1,opt,name=interface" json:"interface,omitempty"`
+}
+
+func (m *AddInterfaceAddressRequest) Reset()                    { *m = AddInterfaceAddressRequest{} }
+func (m *AddInterfaceAddressRequest) String() string            { return proto.CompactTextString(m) }
+func (*AddInterfaceAddressRequest) ProtoMessage()               {}
+func (*AddInterfaceAddressRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{14} }
+
+func (m *AddInterfaceAddressRequest) GetInterface() *Interface {
+	if m != nil {
+		return m.Interface
+	}
+	return nil
+}
+
+type AddInterfaceAddressResponse struct {
+}
+
+func (m *AddInterfaceAddressResponse) Reset()                    { *m = AddInterfaceAddressResponse{} }
+func (m *AddInterfaceAddressResponse) String() string            { return proto.CompactTextString(m) }
+func (*AddInterfaceAddressResponse) ProtoMessage()               {}
+func (*AddInterfaceAddressResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{15} }
+
+type DeleteInterfaceAddressRequest struct {
+	Interface *Interface `protobuf:"bytes,1,opt,name=interface" json:"interface,omitempty"`
+}
+
+func (m *DeleteInterfaceAddressRequest) Reset()                    { *m = DeleteInterfaceAddressRequest{} }
+func (m *DeleteInterfaceAddressRequest) String() string            { return proto.CompactTextString(m) }
+func (*DeleteInterfaceAddressRequest) ProtoMessage()               {}
+func (*DeleteInterfaceAddressRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{16} }
+
+func (m *DeleteInterfaceAddressRequest) GetInterface() *Interface {
+	if m != nil {
+		return m.Interface
+	}
+	return nil
+}
+
+type DeleteInterfaceAddressResponse struct {
+}
+
+func (m *DeleteInterfaceAddressResponse) Reset()                    { *m = DeleteInterfaceAddressResponse{} }
+func (m *DeleteInterfaceAddressResponse) String() string            { return proto.CompactTextString(m) }
+func (*DeleteInterfaceAddressResponse) ProtoMessage()               {}
+func (*DeleteInterfaceAddressResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{17} }
+
+type AddLocalLabelMappingRequest struct {
+	FEC   []string `protobuf:"bytes,1,rep,name=FEC" json:"FEC,omitempty"`
+	Label uint32   `protobuf:"varint,2,opt,name=label" json:"label,omitempty"`
+}
+
+func (m *AddLocalLabelMappingRequest) Reset()                    { *m = AddLocalLabelMappingRequest{} }
+func (m *AddLocalLabelMappingRequest) String() string            { return proto.CompactTextString(m) }
+func (*AddLocalLabelMappingRequest) ProtoMessage()               {}
+func (*AddLocalLabelMappingRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{18} }
+
+func (m *AddLocalLabelMappingRequest) GetFEC() []string {
+	if m != nil {
+		return m.FEC
+	}
+	return nil
+}
+
+func (m *AddLocalLabelMappingRequest) GetLabel() uint32 {
+	if m != nil {
+		return m.Label
+	}
+	return 0
+}
+
+type AddLocalLabelMappingResponse struct {
+}
+
+func (m *AddLocalLabelMappingResponse) Reset()                    { *m = AddLocalLabelMappingResponse{} }
+func (m *AddLocalLabelMappingResponse) String() string            { return proto.CompactTextString(m) }
+func (*AddLocalLabelMappingResponse) ProtoMessage()               {}
+func (*AddLocalLabelMappingResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{19} }
+
+type DeleteLocalLabelMappingRequest struct {
+	FEC []string `protobuf:"bytes,1,rep,name=FEC" json:"FEC,omitempty"`
+}
+
+func (m *DeleteLocalLabelMappingRequest) Reset()                    { *m = DeleteLocalLabelMappingRequest{} }
+func (m *DeleteLocalLabelMappingRequest) String() string            { return proto.CompactTextString(m) }
+func (*DeleteLocalLabelMappingRequest) ProtoMessage()               {}
+func (*DeleteLocalLabelMappingRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{20} }
+
+func (m *DeleteLocalLabelMappingRequest) GetFEC() []string {
+	if m != nil {
+		return m.FEC
+	}
+	return nil
+}
+
+type DeleteLocalLabelMappingResponse struct {
+}
+
+func (m *DeleteLocalLabelMappingResponse) Reset()         { *m = DeleteLocalLabelMappingResponse{} }
+func (m *DeleteLocalLabelMappingResponse) String() string { return proto.CompactTextString(m) }
+func (*DeleteLocalLabelMappingResponse) ProtoMessage()    {}
+func (*DeleteLocalLabelMappingResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor0, []int{21}
+}
+
+type GetLocalLabelMappingRequest struct {
+	FEC string `protobuf:"bytes,1,opt,name=FEC" json:"FEC,omitempty"`
+}
+
+func (m *GetLocalLabelMappingRequest) Reset()                    { *m = GetLocalLabelMappingRequest{} }
+func (m *GetLocalLabelMappingRequest) String() string            { return proto.CompactTextString(m) }
+func (*GetLocalLabelMappingRequest) ProtoMessage()               {}
+func (*GetLocalLabelMappingRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{22} }
+
+func (m *GetLocalLabelMappingRequest) GetFEC() string {
+	if m != nil {
+		return m.FEC
+	}
+	return ""
+}
+
+type GetLocalLabelMappingResponse struct {
+	Label uint32 `protobuf:"varint,1,opt,name=label" json:"label,omitempty"`
+}
+
+func (m *GetLocalLabelMappingResponse) Reset()                    { *m = GetLocalLabelMappingResponse{} }
+func (m *GetLocalLabelMappingResponse) String() string            { return proto.CompactTextString(m) }
+func (*GetLocalLabelMappingResponse) ProtoMessage()               {}
+func (*GetLocalLabelMappingResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{23} }
+
+func (m *GetLocalLabelMappingResponse) GetLabel() uint32 {
+	if m != nil {
+		return m.Label
+	}
+	return 0
+}
+
+type GetRemoteLabelMappingRequest struct {
+	FEC     string `protobuf:"bytes,1,opt,name=FEC" json:"FEC,omitempty"`
+	Nexthop string `protobuf:"bytes,2,opt,name=nexthop" json:"nexthop,omitempty"`
+}
+
+func (m *GetRemoteLabelMappingRequest) Reset()                    { *m = GetRemoteLabelMappingRequest{} }
+func (m *GetRemoteLabelMappingRequest) String() string            { return proto.CompactTextString(m) }
+func (*GetRemoteLabelMappingRequest) ProtoMessage()               {}
+func (*GetRemoteLabelMappingRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{24} }
+
+func (m *GetRemoteLabelMappingRequest) GetFEC() string {
+	if m != nil {
+		return m.FEC
+	}
+	return ""
+}
+
+func (m *GetRemoteLabelMappingRequest) GetNexthop() string {
+	if m != nil {
+		return m.Nexthop
+	}
+	return ""
+}
+
+type GetRemoteLabelMappingResponse struct {
+	Label uint32 `protobuf:"varint,1,opt,name=label" json:"label,omitempty"`
+}
+
+func (m *GetRemoteLabelMappingResponse) Reset()                    { *m = GetRemoteLabelMappingResponse{} }
+func (m *GetRemoteLabelMappingResponse) String() string            { return proto.CompactTextString(m) }
+func (*GetRemoteLabelMappingResponse) ProtoMessage()               {}
+func (*GetRemoteLabelMappingResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{25} }
+
+func (m *GetRemoteLabelMappingResponse) GetLabel() uint32 {
+	if m != nil {
+		return m.Label
+	}
+	return 0
+}
+
+type MonitorSessionRequest struct {
+}
+
+func (m *MonitorSessionRequest) Reset()                    { *m = MonitorSessionRequest{} }
+func (m *MonitorSessionRequest) String() string            { return proto.CompactTextString(m) }
+func (*MonitorSessionRequest) ProtoMessage()               {}
+func (*MonitorSessionRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{26} }
+
+type MonitorSessionResponse struct {
+	Type    MonitorSessionResponse_Type `protobuf:"varint,1,opt,name=type,enum=goldpapi.MonitorSessionResponse_Type" json:"type,omitempty"`
+	Session *Session                    `protobuf:"bytes,2,opt,name=session" json:"session,omitempty"`
+}
+
+func (m *MonitorSessionResponse) Reset()                    { *m = MonitorSessionResponse{} }
+func (m *MonitorSessionResponse) String() string            { return proto.CompactTextString(m) }
+func (*MonitorSessionResponse) ProtoMessage()               {}
+func (*MonitorSessionResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{27} }
+
+func (m *MonitorSessionResponse) GetType() MonitorSessionResponse_Type {
+	if m != nil {
+		return m.Type
+	}
+	return MonitorSessionResponse_ADD
+}
+
+func (m *MonitorSessionResponse) GetSession() *Session {
+	if m != nil {
+		return m.Session
+	}
+	return nil
+}
+
 type Server struct {
 	RouterId        string       `protobuf:"bytes,1,opt,name=router_id,json=routerId" json:"router_id,omitempty"`
 	HoldTime        uint32       `protobuf:"varint,2,opt,name=hold_time,json=holdTime" json:"hold_time,omitempty"`
@@ -277,31 +527,174 @@ type Server struct {
 func (m *Server) Reset()                    { *m = Server{} }
 func (m *Server) String() string            { return proto.CompactTextString(m) }
 func (*Server) ProtoMessage()               {}
-func (*Server) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{14} }
+func (*Server) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{28} }
+
+func (m *Server) GetRouterId() string {
+	if m != nil {
+		return m.RouterId
+	}
+	return ""
+}
+
+func (m *Server) GetHoldTime() uint32 {
+	if m != nil {
+		return m.HoldTime
+	}
+	return 0
+}
+
+func (m *Server) GetLocalAddress() string {
+	if m != nil {
+		return m.LocalAddress
+	}
+	return ""
+}
+
+func (m *Server) GetHelloInterval() uint32 {
+	if m != nil {
+		return m.HelloInterval
+	}
+	return 0
+}
+
+func (m *Server) GetKeepAliveTime() uint32 {
+	if m != nil {
+		return m.KeepAliveTime
+	}
+	return 0
+}
+
+func (m *Server) GetMaxPduLength() uint32 {
+	if m != nil {
+		return m.MaxPduLength
+	}
+	return 0
+}
+
+func (m *Server) GetLoopDetection() bool {
+	if m != nil {
+		return m.LoopDetection
+	}
+	return false
+}
+
+func (m *Server) GetPathVectorLimit() uint32 {
+	if m != nil {
+		return m.PathVectorLimit
+	}
+	return 0
+}
+
+func (m *Server) GetLabelAdvMode() LabelAdvMode {
+	if m != nil {
+		return m.LabelAdvMode
+	}
+	return LabelAdvMode_DOD
+}
 
 type Interface struct {
-	Name string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Name      string   `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Addresses []string `protobuf:"bytes,2,rep,name=addresses" json:"addresses,omitempty"`
 }
 
 func (m *Interface) Reset()                    { *m = Interface{} }
 func (m *Interface) String() string            { return proto.CompactTextString(m) }
 func (*Interface) ProtoMessage()               {}
-func (*Interface) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{15} }
+func (*Interface) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{29} }
+
+func (m *Interface) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *Interface) GetAddresses() []string {
+	if m != nil {
+		return m.Addresses
+	}
+	return nil
+}
 
 type Session struct {
-	PeerId          string       `protobuf:"bytes,1,opt,name=peer_id,json=peerId" json:"peer_id,omitempty"`
-	RouterId        string       `protobuf:"bytes,2,opt,name=router_id,json=routerId" json:"router_id,omitempty"`
+	LocalId         string       `protobuf:"bytes,1,opt,name=local_id,json=localId" json:"local_id,omitempty"`
+	PeerId          string       `protobuf:"bytes,2,opt,name=peer_id,json=peerId" json:"peer_id,omitempty"`
 	KeepAliveTime   uint32       `protobuf:"varint,3,opt,name=keep_alive_time,json=keepAliveTime" json:"keep_alive_time,omitempty"`
 	MaxPduLength    uint32       `protobuf:"varint,4,opt,name=max_pdu_length,json=maxPduLength" json:"max_pdu_length,omitempty"`
 	LoopDetection   bool         `protobuf:"varint,5,opt,name=loop_detection,json=loopDetection" json:"loop_detection,omitempty"`
 	PathVectorLimit uint32       `protobuf:"varint,6,opt,name=path_vector_limit,json=pathVectorLimit" json:"path_vector_limit,omitempty"`
 	LabelAdvMode    LabelAdvMode `protobuf:"varint,7,opt,name=label_adv_mode,json=labelAdvMode,enum=goldpapi.LabelAdvMode" json:"label_adv_mode,omitempty"`
+	PrevFsmState    string       `protobuf:"bytes,8,opt,name=prev_fsm_state,json=prevFsmState" json:"prev_fsm_state,omitempty"`
+	FsmState        string       `protobuf:"bytes,9,opt,name=fsm_state,json=fsmState" json:"fsm_state,omitempty"`
 }
 
 func (m *Session) Reset()                    { *m = Session{} }
 func (m *Session) String() string            { return proto.CompactTextString(m) }
 func (*Session) ProtoMessage()               {}
-func (*Session) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{16} }
+func (*Session) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{30} }
+
+func (m *Session) GetLocalId() string {
+	if m != nil {
+		return m.LocalId
+	}
+	return ""
+}
+
+func (m *Session) GetPeerId() string {
+	if m != nil {
+		return m.PeerId
+	}
+	return ""
+}
+
+func (m *Session) GetKeepAliveTime() uint32 {
+	if m != nil {
+		return m.KeepAliveTime
+	}
+	return 0
+}
+
+func (m *Session) GetMaxPduLength() uint32 {
+	if m != nil {
+		return m.MaxPduLength
+	}
+	return 0
+}
+
+func (m *Session) GetLoopDetection() bool {
+	if m != nil {
+		return m.LoopDetection
+	}
+	return false
+}
+
+func (m *Session) GetPathVectorLimit() uint32 {
+	if m != nil {
+		return m.PathVectorLimit
+	}
+	return 0
+}
+
+func (m *Session) GetLabelAdvMode() LabelAdvMode {
+	if m != nil {
+		return m.LabelAdvMode
+	}
+	return LabelAdvMode_DOD
+}
+
+func (m *Session) GetPrevFsmState() string {
+	if m != nil {
+		return m.PrevFsmState
+	}
+	return ""
+}
+
+func (m *Session) GetFsmState() string {
+	if m != nil {
+		return m.FsmState
+	}
+	return ""
+}
 
 func init() {
 	proto.RegisterType((*StartServerRequest)(nil), "goldpapi.StartServerRequest")
@@ -318,10 +711,25 @@ func init() {
 	proto.RegisterType((*ListInterfaceResponse)(nil), "goldpapi.ListInterfaceResponse")
 	proto.RegisterType((*ListSessionRequest)(nil), "goldpapi.ListSessionRequest")
 	proto.RegisterType((*ListSessionResponse)(nil), "goldpapi.ListSessionResponse")
+	proto.RegisterType((*AddInterfaceAddressRequest)(nil), "goldpapi.AddInterfaceAddressRequest")
+	proto.RegisterType((*AddInterfaceAddressResponse)(nil), "goldpapi.AddInterfaceAddressResponse")
+	proto.RegisterType((*DeleteInterfaceAddressRequest)(nil), "goldpapi.DeleteInterfaceAddressRequest")
+	proto.RegisterType((*DeleteInterfaceAddressResponse)(nil), "goldpapi.DeleteInterfaceAddressResponse")
+	proto.RegisterType((*AddLocalLabelMappingRequest)(nil), "goldpapi.AddLocalLabelMappingRequest")
+	proto.RegisterType((*AddLocalLabelMappingResponse)(nil), "goldpapi.AddLocalLabelMappingResponse")
+	proto.RegisterType((*DeleteLocalLabelMappingRequest)(nil), "goldpapi.DeleteLocalLabelMappingRequest")
+	proto.RegisterType((*DeleteLocalLabelMappingResponse)(nil), "goldpapi.DeleteLocalLabelMappingResponse")
+	proto.RegisterType((*GetLocalLabelMappingRequest)(nil), "goldpapi.GetLocalLabelMappingRequest")
+	proto.RegisterType((*GetLocalLabelMappingResponse)(nil), "goldpapi.GetLocalLabelMappingResponse")
+	proto.RegisterType((*GetRemoteLabelMappingRequest)(nil), "goldpapi.GetRemoteLabelMappingRequest")
+	proto.RegisterType((*GetRemoteLabelMappingResponse)(nil), "goldpapi.GetRemoteLabelMappingResponse")
+	proto.RegisterType((*MonitorSessionRequest)(nil), "goldpapi.MonitorSessionRequest")
+	proto.RegisterType((*MonitorSessionResponse)(nil), "goldpapi.MonitorSessionResponse")
 	proto.RegisterType((*Server)(nil), "goldpapi.Server")
 	proto.RegisterType((*Interface)(nil), "goldpapi.Interface")
 	proto.RegisterType((*Session)(nil), "goldpapi.Session")
 	proto.RegisterEnum("goldpapi.LabelAdvMode", LabelAdvMode_name, LabelAdvMode_value)
+	proto.RegisterEnum("goldpapi.MonitorSessionResponse_Type", MonitorSessionResponse_Type_name, MonitorSessionResponse_Type_value)
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -330,7 +738,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion3
+const _ = grpc.SupportPackageIsVersion4
 
 // Client API for GoldpApi service
 
@@ -338,6 +746,17 @@ type GoldpApiClient interface {
 	StartServer(ctx context.Context, in *StartServerRequest, opts ...grpc.CallOption) (*StartServerResponse, error)
 	StopServer(ctx context.Context, in *StopServerRequest, opts ...grpc.CallOption) (*StopServerResponse, error)
 	GetServer(ctx context.Context, in *GetServerRequest, opts ...grpc.CallOption) (*GetServerResponse, error)
+	AddInterface(ctx context.Context, in *AddInterfaceRequest, opts ...grpc.CallOption) (*AddInterfaceResponse, error)
+	DeleteInterface(ctx context.Context, in *DeleteInterfaceRequest, opts ...grpc.CallOption) (*DeleteInterfaceResponse, error)
+	ListInterface(ctx context.Context, in *ListInterfaceRequest, opts ...grpc.CallOption) (*ListInterfaceResponse, error)
+	ListSession(ctx context.Context, in *ListSessionRequest, opts ...grpc.CallOption) (*ListSessionResponse, error)
+	AddInterfaceAddress(ctx context.Context, in *AddInterfaceAddressRequest, opts ...grpc.CallOption) (*AddInterfaceAddressResponse, error)
+	DeleteInterfaceAddress(ctx context.Context, in *DeleteInterfaceAddressRequest, opts ...grpc.CallOption) (*DeleteInterfaceAddressResponse, error)
+	AddLocalLabelMapping(ctx context.Context, in *AddLocalLabelMappingRequest, opts ...grpc.CallOption) (*AddLocalLabelMappingResponse, error)
+	DeleteLocalLabelMapping(ctx context.Context, in *DeleteLocalLabelMappingRequest, opts ...grpc.CallOption) (*DeleteLocalLabelMappingResponse, error)
+	GetLocalLabelMapping(ctx context.Context, in *GetLocalLabelMappingRequest, opts ...grpc.CallOption) (*GetLocalLabelMappingResponse, error)
+	GetRemoteLabelMapping(ctx context.Context, in *GetRemoteLabelMappingRequest, opts ...grpc.CallOption) (*GetRemoteLabelMappingResponse, error)
+	MonitorSession(ctx context.Context, in *MonitorSessionRequest, opts ...grpc.CallOption) (GoldpApi_MonitorSessionClient, error)
 }
 
 type goldpApiClient struct {
@@ -375,12 +794,145 @@ func (c *goldpApiClient) GetServer(ctx context.Context, in *GetServerRequest, op
 	return out, nil
 }
 
+func (c *goldpApiClient) AddInterface(ctx context.Context, in *AddInterfaceRequest, opts ...grpc.CallOption) (*AddInterfaceResponse, error) {
+	out := new(AddInterfaceResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/AddInterface", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) DeleteInterface(ctx context.Context, in *DeleteInterfaceRequest, opts ...grpc.CallOption) (*DeleteInterfaceResponse, error) {
+	out := new(DeleteInterfaceResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/DeleteInterface", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) ListInterface(ctx context.Context, in *ListInterfaceRequest, opts ...grpc.CallOption) (*ListInterfaceResponse, error) {
+	out := new(ListInterfaceResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/ListInterface", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) ListSession(ctx context.Context, in *ListSessionRequest, opts ...grpc.CallOption) (*ListSessionResponse, error) {
+	out := new(ListSessionResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/ListSession", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) AddInterfaceAddress(ctx context.Context, in *AddInterfaceAddressRequest, opts ...grpc.CallOption) (*AddInterfaceAddressResponse, error) {
+	out := new(AddInterfaceAddressResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/AddInterfaceAddress", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) DeleteInterfaceAddress(ctx context.Context, in *DeleteInterfaceAddressRequest, opts ...grpc.CallOption) (*DeleteInterfaceAddressResponse, error) {
+	out := new(DeleteInterfaceAddressResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/DeleteInterfaceAddress", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) AddLocalLabelMapping(ctx context.Context, in *AddLocalLabelMappingRequest, opts ...grpc.CallOption) (*AddLocalLabelMappingResponse, error) {
+	out := new(AddLocalLabelMappingResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/AddLocalLabelMapping", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) DeleteLocalLabelMapping(ctx context.Context, in *DeleteLocalLabelMappingRequest, opts ...grpc.CallOption) (*DeleteLocalLabelMappingResponse, error) {
+	out := new(DeleteLocalLabelMappingResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/DeleteLocalLabelMapping", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) GetLocalLabelMapping(ctx context.Context, in *GetLocalLabelMappingRequest, opts ...grpc.CallOption) (*GetLocalLabelMappingResponse, error) {
+	out := new(GetLocalLabelMappingResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/GetLocalLabelMapping", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) GetRemoteLabelMapping(ctx context.Context, in *GetRemoteLabelMappingRequest, opts ...grpc.CallOption) (*GetRemoteLabelMappingResponse, error) {
+	out := new(GetRemoteLabelMappingResponse)
+	err := grpc.Invoke(ctx, "/goldpapi.GoldpApi/GetRemoteLabelMapping", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *goldpApiClient) MonitorSession(ctx context.Context, in *MonitorSessionRequest, opts ...grpc.CallOption) (GoldpApi_MonitorSessionClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_GoldpApi_serviceDesc.Streams[0], c.cc, "/goldpapi.GoldpApi/MonitorSession", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &goldpApiMonitorSessionClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type GoldpApi_MonitorSessionClient interface {
+	Recv() (*MonitorSessionResponse, error)
+	grpc.ClientStream
+}
+
+type goldpApiMonitorSessionClient struct {
+	grpc.ClientStream
+}
+
+func (x *goldpApiMonitorSessionClient) Recv() (*MonitorSessionResponse, error) {
+	m := new(MonitorSessionResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // Server API for GoldpApi service
 
 type GoldpApiServer interface {
 	StartServer(context.Context, *StartServerRequest) (*StartServerResponse, error)
 	StopServer(context.Context, *StopServerRequest) (*StopServerResponse, error)
 	GetServer(context.Context, *GetServerRequest) (*GetServerResponse, error)
+	AddInterface(context.Context, *AddInterfaceRequest) (*AddInterfaceResponse, error)
+	DeleteInterface(context.Context, *DeleteInterfaceRequest) (*DeleteInterfaceResponse, error)
+	ListInterface(context.Context, *ListInterfaceRequest) (*ListInterfaceResponse, error)
+	ListSession(context.Context, *ListSessionRequest) (*ListSessionResponse, error)
+	AddInterfaceAddress(context.Context, *AddInterfaceAddressRequest) (*AddInterfaceAddressResponse, error)
+	DeleteInterfaceAddress(context.Context, *DeleteInterfaceAddressRequest) (*DeleteInterfaceAddressResponse, error)
+	AddLocalLabelMapping(context.Context, *AddLocalLabelMappingRequest) (*AddLocalLabelMappingResponse, error)
+	DeleteLocalLabelMapping(context.Context, *DeleteLocalLabelMappingRequest) (*DeleteLocalLabelMappingResponse, error)
+	GetLocalLabelMapping(context.Context, *GetLocalLabelMappingRequest) (*GetLocalLabelMappingResponse, error)
+	GetRemoteLabelMapping(context.Context, *GetRemoteLabelMappingRequest) (*GetRemoteLabelMappingResponse, error)
+	MonitorSession(*MonitorSessionRequest, GoldpApi_MonitorSessionServer) error
 }
 
 func RegisterGoldpApiServer(s *grpc.Server, srv GoldpApiServer) {
@@ -441,6 +993,207 @@ func _GoldpApi_GetServer_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GoldpApi_AddInterface_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddInterfaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).AddInterface(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/AddInterface",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).AddInterface(ctx, req.(*AddInterfaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_DeleteInterface_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteInterfaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).DeleteInterface(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/DeleteInterface",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).DeleteInterface(ctx, req.(*DeleteInterfaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_ListInterface_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListInterfaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).ListInterface(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/ListInterface",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).ListInterface(ctx, req.(*ListInterfaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_ListSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).ListSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/ListSession",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).ListSession(ctx, req.(*ListSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_AddInterfaceAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddInterfaceAddressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).AddInterfaceAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/AddInterfaceAddress",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).AddInterfaceAddress(ctx, req.(*AddInterfaceAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_DeleteInterfaceAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteInterfaceAddressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).DeleteInterfaceAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/DeleteInterfaceAddress",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).DeleteInterfaceAddress(ctx, req.(*DeleteInterfaceAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_AddLocalLabelMapping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddLocalLabelMappingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).AddLocalLabelMapping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/AddLocalLabelMapping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).AddLocalLabelMapping(ctx, req.(*AddLocalLabelMappingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_DeleteLocalLabelMapping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteLocalLabelMappingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).DeleteLocalLabelMapping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/DeleteLocalLabelMapping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).DeleteLocalLabelMapping(ctx, req.(*DeleteLocalLabelMappingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_GetLocalLabelMapping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLocalLabelMappingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).GetLocalLabelMapping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/GetLocalLabelMapping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).GetLocalLabelMapping(ctx, req.(*GetLocalLabelMappingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_GetRemoteLabelMapping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRemoteLabelMappingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoldpApiServer).GetRemoteLabelMapping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/goldpapi.GoldpApi/GetRemoteLabelMapping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoldpApiServer).GetRemoteLabelMapping(ctx, req.(*GetRemoteLabelMappingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GoldpApi_MonitorSession_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(MonitorSessionRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(GoldpApiServer).MonitorSession(m, &goldpApiMonitorSessionServer{stream})
+}
+
+type GoldpApi_MonitorSessionServer interface {
+	Send(*MonitorSessionResponse) error
+	grpc.ServerStream
+}
+
+type goldpApiMonitorSessionServer struct {
+	grpc.ServerStream
+}
+
+func (x *goldpApiMonitorSessionServer) Send(m *MonitorSessionResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 var _GoldpApi_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "goldpapi.GoldpApi",
 	HandlerType: (*GoldpApiServer)(nil),
@@ -457,53 +1210,128 @@ var _GoldpApi_serviceDesc = grpc.ServiceDesc{
 			MethodName: "GetServer",
 			Handler:    _GoldpApi_GetServer_Handler,
 		},
+		{
+			MethodName: "AddInterface",
+			Handler:    _GoldpApi_AddInterface_Handler,
+		},
+		{
+			MethodName: "DeleteInterface",
+			Handler:    _GoldpApi_DeleteInterface_Handler,
+		},
+		{
+			MethodName: "ListInterface",
+			Handler:    _GoldpApi_ListInterface_Handler,
+		},
+		{
+			MethodName: "ListSession",
+			Handler:    _GoldpApi_ListSession_Handler,
+		},
+		{
+			MethodName: "AddInterfaceAddress",
+			Handler:    _GoldpApi_AddInterfaceAddress_Handler,
+		},
+		{
+			MethodName: "DeleteInterfaceAddress",
+			Handler:    _GoldpApi_DeleteInterfaceAddress_Handler,
+		},
+		{
+			MethodName: "AddLocalLabelMapping",
+			Handler:    _GoldpApi_AddLocalLabelMapping_Handler,
+		},
+		{
+			MethodName: "DeleteLocalLabelMapping",
+			Handler:    _GoldpApi_DeleteLocalLabelMapping_Handler,
+		},
+		{
+			MethodName: "GetLocalLabelMapping",
+			Handler:    _GoldpApi_GetLocalLabelMapping_Handler,
+		},
+		{
+			MethodName: "GetRemoteLabelMapping",
+			Handler:    _GoldpApi_GetRemoteLabelMapping_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: fileDescriptor0,
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "MonitorSession",
+			Handler:       _GoldpApi_MonitorSession_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "api.proto",
 }
 
 func init() { proto.RegisterFile("api.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
-	// 640 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xac, 0x95, 0xdd, 0x6e, 0xda, 0x4c,
-	0x10, 0x86, 0x63, 0x48, 0xc0, 0x9e, 0x00, 0x81, 0x25, 0x5f, 0x62, 0x91, 0x7c, 0x0a, 0x72, 0x7f,
-	0x84, 0x22, 0x35, 0x52, 0x93, 0xd3, 0xfe, 0x08, 0x09, 0x35, 0x45, 0x75, 0xd5, 0x0a, 0xda, 0x9e,
-	0x5a, 0x0e, 0x3b, 0x0d, 0xab, 0xae, 0x59, 0xd7, 0x5e, 0x50, 0xae, 0xa6, 0x37, 0x58, 0xf5, 0x1e,
-	0xaa, 0x5d, 0xdb, 0xd8, 0x90, 0x44, 0x22, 0x51, 0xcf, 0xf0, 0x33, 0xef, 0xbe, 0x33, 0x3b, 0x83,
-	0xc7, 0x60, 0xf9, 0x21, 0x3b, 0x0b, 0x23, 0x21, 0x05, 0x31, 0xaf, 0x05, 0xa7, 0xa1, 0x1f, 0x32,
-	0xe7, 0x0d, 0x90, 0xb1, 0xf4, 0x23, 0x39, 0xc6, 0x68, 0x81, 0xd1, 0x08, 0x7f, 0xce, 0x31, 0x96,
-	0xa4, 0x07, 0x95, 0x58, 0x03, 0xdb, 0xe8, 0x1a, 0xbd, 0xdd, 0xf3, 0xe6, 0x59, 0x76, 0xe0, 0x2c,
-	0x15, 0xa6, 0x71, 0xe7, 0x2d, 0xb4, 0x57, 0xce, 0xc7, 0xa1, 0x98, 0xc5, 0xf8, 0x00, 0x83, 0x36,
-	0xb4, 0xc6, 0x52, 0x84, 0x2b, 0xf9, 0x93, 0xaa, 0x72, 0xf8, 0x60, 0x53, 0x02, 0xcd, 0x4b, 0x5c,
-	0xbd, 0x93, 0xf3, 0x1a, 0x5a, 0x05, 0xf6, 0x60, 0xcb, 0xf7, 0xd0, 0xee, 0x53, 0x3a, 0x9c, 0x49,
-	0x8c, 0xbe, 0xfb, 0x13, 0xcc, 0x3a, 0xf5, 0x12, 0x2c, 0x96, 0xb1, 0xd4, 0xa3, 0x9d, 0x7b, 0xe4,
-	0xf2, 0x5c, 0xe5, 0x0c, 0x61, 0x7f, 0xd5, 0x29, 0xad, 0xe5, 0x11, 0x56, 0x1f, 0xe0, 0x60, 0x80,
-	0x1c, 0x25, 0xfe, 0x8b, 0xba, 0x5c, 0x38, 0xbc, 0x65, 0xf6, 0xf8, 0xd2, 0x0e, 0x60, 0xdf, 0x65,
-	0xb1, 0x5c, 0x2f, 0xcc, 0x71, 0xe1, 0xbf, 0x35, 0x9e, 0xe6, 0xb8, 0x00, 0x58, 0x9e, 0x8e, 0x6d,
-	0xa3, 0x5b, 0xbe, 0x2f, 0x49, 0x41, 0xe6, 0xec, 0x03, 0x51, 0x6e, 0x63, 0x8c, 0x63, 0x26, 0x66,
-	0x59, 0x8e, 0x01, 0xb4, 0x57, 0x68, 0x9a, 0xe1, 0x05, 0x98, 0x71, 0x82, 0x32, 0xff, 0x56, 0x71,
-	0xdc, 0x89, 0x78, 0x29, 0x71, 0xfe, 0x94, 0xa0, 0x92, 0xfc, 0x09, 0xc8, 0x11, 0x58, 0x91, 0x98,
-	0x4b, 0x8c, 0x3c, 0x46, 0xf5, 0xfd, 0xad, 0x91, 0x99, 0x80, 0x21, 0x55, 0xc1, 0xa9, 0xe0, 0xd4,
-	0x93, 0x2c, 0x40, 0xbb, 0xd4, 0x35, 0x7a, 0xf5, 0x91, 0xa9, 0xc0, 0x17, 0x16, 0x20, 0x79, 0x02,
-	0x75, 0x2e, 0x26, 0x3e, 0xf7, 0x7c, 0x4a, 0x23, 0x8c, 0x63, 0xbb, 0xac, 0x4f, 0xd7, 0x34, 0xec,
-	0x27, 0x8c, 0x3c, 0x83, 0xc6, 0x14, 0x39, 0x17, 0x9e, 0xbe, 0xd9, 0xc2, 0xe7, 0xf6, 0xb6, 0xb6,
-	0xa9, 0x6b, 0x3a, 0x4c, 0x21, 0x79, 0x0e, 0x7b, 0x3f, 0x10, 0x43, 0xcf, 0xe7, 0x6c, 0x81, 0x49,
-	0xba, 0x9d, 0x44, 0xa7, 0x70, 0x5f, 0x51, 0x9d, 0xf3, 0x29, 0x34, 0x02, 0xff, 0xc6, 0x0b, 0xe9,
-	0xdc, 0xe3, 0x38, 0xbb, 0x96, 0x53, 0xbb, 0xa2, 0x65, 0xb5, 0xc0, 0xbf, 0xf9, 0x4c, 0xe7, 0xae,
-	0x66, 0x2a, 0x29, 0x17, 0x22, 0xf4, 0x28, 0x4a, 0x9c, 0x48, 0x26, 0x66, 0x76, 0xb5, 0x6b, 0xf4,
-	0xcc, 0x51, 0x5d, 0xd1, 0x41, 0x06, 0xc9, 0x29, 0xb4, 0x42, 0x5f, 0x4e, 0xbd, 0x05, 0x4e, 0xa4,
-	0x88, 0x3c, 0xce, 0x02, 0x26, 0x6d, 0x53, 0xfb, 0xed, 0xa9, 0xc0, 0x37, 0xcd, 0x5d, 0x85, 0xc9,
-	0x2b, 0x68, 0x70, 0xff, 0x0a, 0xd5, 0x65, 0x17, 0x5e, 0x20, 0x28, 0xda, 0x56, 0xd7, 0xe8, 0x35,
-	0xce, 0x0f, 0xf2, 0x36, 0xbb, 0x2a, 0xde, 0xa7, 0x8b, 0x8f, 0x82, 0xe2, 0xa8, 0xc6, 0x0b, 0x4f,
-	0xce, 0x09, 0x58, 0xcb, 0x21, 0x13, 0x02, 0xdb, 0x33, 0x3f, 0xc0, 0xb4, 0xd9, 0xfa, 0xb7, 0xf3,
-	0xab, 0x04, 0xd5, 0x74, 0x4c, 0xe4, 0x10, 0xaa, 0x21, 0x16, 0xe7, 0x51, 0x51, 0x8f, 0xc9, 0x34,
-	0xf2, 0x51, 0x95, 0xd6, 0x46, 0x75, 0x47, 0x07, 0xcb, 0x9b, 0x75, 0x70, 0x7b, 0xa3, 0x0e, 0xee,
-	0x6c, 0xdc, 0xc1, 0xca, 0xa6, 0x1d, 0xac, 0x6e, 0xde, 0xc1, 0xd3, 0x13, 0xa8, 0x15, 0xa3, 0xa4,
-	0x0a, 0xe5, 0xc1, 0xa7, 0x41, 0x73, 0x8b, 0x54, 0xa0, 0x34, 0xf8, 0xda, 0x34, 0xce, 0x7f, 0x1b,
-	0x60, 0x5e, 0x2a, 0xa3, 0x7e, 0xc8, 0x88, 0x0b, 0xbb, 0x85, 0xd5, 0x4d, 0x8e, 0x0b, 0xef, 0xc2,
-	0xad, 0x2f, 0x42, 0xe7, 0xff, 0x7b, 0xa2, 0xc9, 0xab, 0xe5, 0x6c, 0x91, 0x21, 0x40, 0xbe, 0xb2,
-	0xc9, 0x51, 0x51, 0xbe, 0xb6, 0xdd, 0x3b, 0xc7, 0x77, 0x07, 0x97, 0x56, 0xef, 0xc0, 0x5a, 0x6e,
-	0x6a, 0xd2, 0xc9, 0xc5, 0xeb, 0x2b, 0xbd, 0x73, 0x74, 0x67, 0x2c, 0xf3, 0xb9, 0xaa, 0xe8, 0x8f,
-	0xdd, 0xc5, 0xdf, 0x00, 0x00, 0x00, 0xff, 0xff, 0x1c, 0x13, 0x08, 0xfa, 0xf9, 0x06, 0x00, 0x00,
+	// 1104 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xac, 0x57, 0xed, 0x72, 0xdb, 0x44,
+	0x14, 0x8d, 0x9c, 0xd4, 0xb6, 0x6e, 0x6c, 0xc7, 0x59, 0xe7, 0x43, 0xc8, 0x4e, 0xe2, 0x8a, 0xa4,
+	0x35, 0x65, 0x08, 0x90, 0xc2, 0x0f, 0x66, 0x28, 0x8c, 0x07, 0x27, 0xc1, 0xa0, 0x4c, 0x3a, 0x72,
+	0x0a, 0xfc, 0xd3, 0xa8, 0xd1, 0x26, 0x16, 0x48, 0x96, 0x90, 0x36, 0x9e, 0xf4, 0x45, 0x78, 0x04,
+	0x5e, 0x8b, 0x27, 0xe0, 0x1d, 0x98, 0x5d, 0xad, 0xbe, 0x6c, 0x29, 0x76, 0x5a, 0xfe, 0x59, 0x67,
+	0xef, 0x9e, 0x73, 0xf7, 0xde, 0xbb, 0xd2, 0x31, 0x88, 0x86, 0x67, 0x1d, 0x7b, 0xbe, 0x4b, 0x5c,
+	0x54, 0xbd, 0x75, 0x6d, 0xd3, 0x33, 0x3c, 0x4b, 0xf9, 0x0e, 0xd0, 0x88, 0x18, 0x3e, 0x19, 0x61,
+	0x7f, 0x8a, 0x7d, 0x0d, 0xff, 0x79, 0x87, 0x03, 0x82, 0x7a, 0x50, 0x0e, 0x18, 0x20, 0x09, 0x5d,
+	0xa1, 0xb7, 0x7e, 0xd2, 0x3c, 0x8e, 0x36, 0x1c, 0xf3, 0x40, 0xbe, 0xae, 0x7c, 0x0f, 0xad, 0xcc,
+	0xfe, 0xc0, 0x73, 0x27, 0x01, 0x7e, 0x04, 0x41, 0x0b, 0x36, 0x47, 0xc4, 0xf5, 0x32, 0xfa, 0x61,
+	0x56, 0x09, 0xf8, 0x68, 0x52, 0x04, 0xcd, 0x73, 0x9c, 0x3d, 0x93, 0xf2, 0x0a, 0x36, 0x53, 0xd8,
+	0xa3, 0x29, 0x7f, 0x84, 0x56, 0xdf, 0x34, 0x87, 0x13, 0x82, 0xfd, 0x1b, 0xe3, 0x1a, 0x47, 0x95,
+	0xfa, 0x12, 0x44, 0x2b, 0xc2, 0x38, 0x47, 0x2b, 0xe1, 0x48, 0xc2, 0x93, 0x28, 0x65, 0x08, 0x5b,
+	0x59, 0x26, 0x9e, 0xcb, 0x7b, 0x50, 0xfd, 0x0c, 0x3b, 0x03, 0x6c, 0x63, 0x82, 0xff, 0x8f, 0xbc,
+	0x54, 0xd8, 0x9d, 0x23, 0x7b, 0xff, 0xd4, 0x76, 0x60, 0x4b, 0xb5, 0x02, 0x32, 0x9b, 0x98, 0xa2,
+	0xc2, 0xf6, 0x0c, 0xce, 0x35, 0x5e, 0x02, 0xc4, 0xbb, 0x03, 0x49, 0xe8, 0xae, 0x16, 0x89, 0xa4,
+	0xc2, 0x94, 0x2d, 0x40, 0x94, 0x6d, 0x84, 0x83, 0xc0, 0x72, 0x27, 0x91, 0xc6, 0x00, 0x5a, 0x19,
+	0x94, 0x2b, 0x7c, 0x06, 0xd5, 0x20, 0x84, 0x22, 0xfe, 0xcd, 0x74, 0xbb, 0xc3, 0xe0, 0x38, 0x44,
+	0xb9, 0x04, 0x39, 0xdd, 0xa7, 0xbe, 0x69, 0xfa, 0x38, 0x08, 0x3e, 0xa0, 0xc0, 0x7b, 0xd0, 0xce,
+	0x25, 0x0c, 0xd3, 0x53, 0x34, 0xd8, 0x9b, 0xa9, 0xff, 0x87, 0x4b, 0x76, 0x61, 0xbf, 0x88, 0x93,
+	0xab, 0x9e, 0xb2, 0xa4, 0x54, 0xf7, 0xda, 0xb0, 0x55, 0xe3, 0x2d, 0xb6, 0x2f, 0x0c, 0xcf, 0xb3,
+	0x26, 0xb7, 0x91, 0x66, 0x13, 0x56, 0xcf, 0x4e, 0x7f, 0x60, 0xe5, 0x12, 0x35, 0xfa, 0x13, 0x6d,
+	0xc1, 0x13, 0x9b, 0x06, 0x4a, 0xa5, 0xae, 0xd0, 0xab, 0x6b, 0xe1, 0x83, 0xb2, 0x0f, 0x9d, 0x7c,
+	0x1a, 0x2e, 0x73, 0x12, 0x25, 0xb2, 0xbc, 0x92, 0xf2, 0x14, 0x0e, 0x0a, 0xf7, 0x70, 0xda, 0xcf,
+	0xa1, 0x7d, 0x8e, 0xc9, 0x62, 0x4e, 0x21, 0xe2, 0xfc, 0x0a, 0x3a, 0xf9, 0x1b, 0xf8, 0x8c, 0xc4,
+	0xa7, 0x13, 0xd2, 0xa7, 0xfb, 0x89, 0xed, 0xd2, 0xb0, 0xe3, 0x12, 0xbc, 0x94, 0x0e, 0x92, 0xa0,
+	0x32, 0xc1, 0xf7, 0x64, 0xec, 0x7a, 0xac, 0x4e, 0xa2, 0x16, 0x3d, 0x2a, 0x5f, 0xc3, 0x5e, 0x01,
+	0xd7, 0x83, 0x29, 0xec, 0xc2, 0xf6, 0x85, 0x3b, 0xb1, 0x88, 0xeb, 0xcf, 0x0c, 0xfb, 0xdf, 0x02,
+	0xec, 0xcc, 0xae, 0x70, 0xa6, 0x6f, 0x60, 0x8d, 0xbc, 0xf3, 0xc2, 0x59, 0x69, 0x9c, 0x1c, 0x25,
+	0xb3, 0x92, 0x1f, 0x7f, 0x7c, 0xf5, 0xce, 0xc3, 0x1a, 0xdb, 0x82, 0x3e, 0x85, 0x0a, 0xbf, 0x08,
+	0x2c, 0xff, 0xdc, 0xab, 0x12, 0x45, 0x28, 0x87, 0xb0, 0x46, 0xb7, 0xa2, 0x0a, 0xac, 0xf6, 0x07,
+	0x83, 0xe6, 0x0a, 0xfd, 0x31, 0x38, 0x55, 0x9b, 0x02, 0x02, 0x28, 0xbf, 0x79, 0x3d, 0xe8, 0x5f,
+	0x9d, 0x36, 0x4b, 0xca, 0xbf, 0x25, 0x28, 0x87, 0x2f, 0x55, 0xd4, 0x06, 0xd1, 0x77, 0xef, 0x08,
+	0xf6, 0x75, 0xcb, 0xe4, 0x55, 0xab, 0x86, 0xc0, 0xd0, 0xa4, 0x8b, 0x63, 0xd7, 0x36, 0x75, 0x62,
+	0x39, 0x98, 0x0f, 0x59, 0x95, 0x02, 0x57, 0x96, 0x83, 0xd1, 0xc7, 0x50, 0xb7, 0x69, 0xf3, 0x74,
+	0x23, 0x9c, 0x63, 0x69, 0x95, 0xed, 0xae, 0x31, 0x90, 0xcf, 0x36, 0x3a, 0x82, 0xc6, 0x18, 0xdb,
+	0xb6, 0xab, 0xb3, 0x8b, 0x30, 0x35, 0x6c, 0x69, 0x8d, 0xd1, 0xd4, 0x19, 0x3a, 0xe4, 0x20, 0x7a,
+	0x06, 0x1b, 0x7f, 0x60, 0xec, 0xe9, 0x86, 0x6d, 0x4d, 0x71, 0x28, 0xf7, 0x24, 0x8c, 0xa3, 0x70,
+	0x9f, 0xa2, 0x4c, 0xf3, 0x10, 0x1a, 0x8e, 0x71, 0xaf, 0x7b, 0xe6, 0x9d, 0x6e, 0xe3, 0xc9, 0x2d,
+	0x19, 0x4b, 0x65, 0x16, 0x56, 0x73, 0x8c, 0xfb, 0xd7, 0xe6, 0x9d, 0xca, 0x30, 0x2a, 0x6a, 0xbb,
+	0xae, 0xa7, 0x9b, 0x98, 0xe0, 0x6b, 0x42, 0x0b, 0x57, 0xe9, 0x0a, 0xbd, 0xaa, 0x56, 0xa7, 0xe8,
+	0x20, 0x02, 0xd1, 0x0b, 0xd8, 0xf4, 0x0c, 0x32, 0xd6, 0xa7, 0xf8, 0x9a, 0xb8, 0xbe, 0x6e, 0x5b,
+	0x8e, 0x45, 0xa4, 0x2a, 0xe3, 0xdb, 0xa0, 0x0b, 0xbf, 0x30, 0x5c, 0xa5, 0x30, 0xfa, 0x16, 0x1a,
+	0xac, 0xf9, 0xba, 0x61, 0x4e, 0x75, 0xc7, 0x35, 0xb1, 0x24, 0xb2, 0x4e, 0xee, 0x24, 0xbd, 0x60,
+	0x13, 0xd4, 0x37, 0xa7, 0x17, 0xae, 0x89, 0xb5, 0x9a, 0x9d, 0x7a, 0x52, 0x5e, 0x81, 0x18, 0xdf,
+	0x7a, 0x84, 0x60, 0x6d, 0x62, 0x38, 0x98, 0x17, 0x9b, 0xfd, 0x46, 0x1d, 0x10, 0x79, 0x15, 0x71,
+	0x20, 0x95, 0xd8, 0xbd, 0x4b, 0x00, 0xe5, 0x9f, 0x12, 0x54, 0x78, 0xa7, 0xd1, 0x47, 0x50, 0x0d,
+	0xab, 0x1e, 0xb7, 0xab, 0xc2, 0x9e, 0x87, 0x26, 0xda, 0x85, 0x8a, 0x87, 0xc3, 0x46, 0x86, 0x83,
+	0x5e, 0xa6, 0x8f, 0x43, 0x33, 0xaf, 0xba, 0xab, 0xcb, 0x55, 0x77, 0x6d, 0xa9, 0xea, 0x3e, 0x59,
+	0xba, 0xba, 0xe5, 0x65, 0xab, 0x5b, 0x59, 0xbe, 0xba, 0x34, 0x6d, 0xcf, 0xc7, 0x53, 0xfd, 0x26,
+	0x70, 0xf4, 0x80, 0x18, 0x04, 0xb3, 0x26, 0x8a, 0x5a, 0x8d, 0xa2, 0x67, 0x81, 0x33, 0xa2, 0x18,
+	0x9d, 0xe5, 0x24, 0x40, 0x0c, 0x07, 0xfd, 0x86, 0x2f, 0xbe, 0x38, 0x80, 0x5a, 0x5a, 0x80, 0xdd,
+	0x9a, 0x4b, 0x7a, 0x7d, 0xca, 0x50, 0x1a, 0xbc, 0x69, 0x0a, 0x27, 0x7f, 0x01, 0x54, 0xcf, 0x69,
+	0x2e, 0x7d, 0xcf, 0x42, 0x2a, 0xac, 0xa7, 0x9c, 0x16, 0xea, 0xa4, 0xee, 0xe3, 0x9c, 0x81, 0x93,
+	0xf7, 0x0a, 0x56, 0xf9, 0x6b, 0x73, 0x05, 0x0d, 0x01, 0x12, 0x87, 0x85, 0xda, 0xe9, 0xf0, 0x19,
+	0x33, 0x26, 0x77, 0xf2, 0x17, 0x63, 0xaa, 0x33, 0x10, 0x63, 0x63, 0x85, 0xe4, 0x24, 0x78, 0xd6,
+	0x81, 0xc9, 0xed, 0xdc, 0xb5, 0x98, 0xe7, 0x12, 0x6a, 0xe9, 0xcf, 0x23, 0x4a, 0x9d, 0x21, 0xc7,
+	0x79, 0xc9, 0xfb, 0x45, 0xcb, 0x31, 0xe1, 0x6f, 0xb0, 0x31, 0xf3, 0xf1, 0x43, 0xdd, 0x64, 0x53,
+	0xbe, 0x71, 0x92, 0x9f, 0x3e, 0x10, 0x11, 0x33, 0x6b, 0x50, 0xcf, 0x98, 0x18, 0x94, 0x4a, 0x26,
+	0xcf, 0xf5, 0xc8, 0x07, 0x85, 0xeb, 0x31, 0xa7, 0x0a, 0xeb, 0x29, 0xd3, 0x92, 0xee, 0xef, 0xbc,
+	0xc3, 0x49, 0xf7, 0x37, 0xc7, 0xe9, 0x28, 0x2b, 0xc8, 0xcc, 0xda, 0xd5, 0xe8, 0xcd, 0x78, 0x98,
+	0x5f, 0xb4, 0xac, 0xd1, 0x90, 0x8f, 0x16, 0x44, 0xc5, 0x2a, 0xce, 0x9c, 0xff, 0x8c, 0x84, 0x9e,
+	0x17, 0x96, 0x71, 0x46, 0xab, 0xb7, 0x38, 0x30, 0x96, 0xbb, 0x65, 0xce, 0x79, 0xee, 0xe3, 0x8d,
+	0xb2, 0xf9, 0x16, 0xb9, 0x01, 0xf9, 0xd9, 0xa2, 0xb0, 0x58, 0xc8, 0x8b, 0xac, 0xf0, 0xbc, 0xd6,
+	0x5c, 0xbe, 0x85, 0x72, 0x9f, 0x2c, 0x11, 0x99, 0x3e, 0x5a, 0x9e, 0x2f, 0x49, 0x1f, 0xed, 0x01,
+	0xa3, 0x93, 0x3e, 0xda, 0x43, 0xf6, 0x46, 0x59, 0x41, 0xbf, 0xc3, 0x76, 0xae, 0xfd, 0x40, 0x59,
+	0x8a, 0x42, 0xaf, 0x23, 0x3f, 0x5f, 0x18, 0x17, 0x6b, 0xfd, 0x0a, 0x8d, 0xac, 0xd3, 0x40, 0x07,
+	0xc5, 0x1e, 0x24, 0x64, 0xef, 0x2e, 0x32, 0x29, 0xca, 0xca, 0x17, 0xc2, 0xdb, 0x32, 0xfb, 0x1b,
+	0xfb, 0xf2, 0xbf, 0x00, 0x00, 0x00, 0xff, 0xff, 0xd4, 0x28, 0x2c, 0xb2, 0xd3, 0x0e, 0x00, 0x00,
 }

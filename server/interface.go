@@ -23,22 +23,85 @@ import (
 	"golang.org/x/net/ipv4"
 
 	"github.com/apex/log"
+	"github.com/ishidawataru/goldp/config"
 	"github.com/ishidawataru/goldp/packet"
+	"gopkg.in/tomb.v2"
 )
 
 type Interface struct {
-	i        *net.Interface
-	p        *ipv4.PacketConn
-	endCh    chan chan struct{}
-	routerId string
-	holdTime int
-	helloing bool
+	t           tomb.Tomb
+	s           *Server
+	i           *net.Interface
+	p           *ipv4.PacketConn
+	routerId    string
+	holdTime    int
+	recvedHello *hello
+	ch          chan *hello
+	addresses   []string
+}
+
+func (i *Interface) addAddress(address ...string) error {
+	// duplication check
+	for _, a := range i.addresses {
+		for _, b := range address {
+			if a == b {
+				return fmt.Errorf("%s duplicated", a)
+			}
+		}
+	}
+	i.addresses = append(i.addresses, address...)
+	return nil
+}
+
+func (i *Interface) delAddress(address ...string) error {
+	// existance check
+	for _, b := range address {
+		found := false
+		for _, a := range i.addresses {
+			if a == b {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("%s doesn't exist", b)
+		}
+	}
+	n := make([]string, 0, len(i.addresses))
+	for _, a := range i.addresses {
+		found := false
+		for _, b := range address {
+			if a == b {
+				found = true
+				break
+			}
+		}
+		if !found {
+			n = append(n, a)
+		}
+	}
+	i.addresses = n
+	return nil
+}
+
+func (i *Interface) ToConfig() config.Interface {
+	return config.Interface{
+		Name:      i.i.Name,
+		Index:     i.i.Index,
+		Addresses: i.addresses,
+	}
+}
+
+func (i *Interface) recv(h *hello) error {
+	select {
+	case i.ch <- h:
+	default:
+		return fmt.Errorf("failed to send hello to internal goroutine")
+	}
+	return nil
 }
 
 func (i *Interface) hello() error {
-	if i.helloing {
-		return fmt.Errorf("already sending hellos")
-	}
 	dst, _ := net.ResolveUDPAddr("udp4", fmt.Sprintf("224.0.0.2:%d", ldp.UDP_PORT))
 	if err := i.p.JoinGroup(i.i, dst); err != nil {
 		return err
@@ -53,19 +116,42 @@ func (i *Interface) hello() error {
 		log.Fatalf("%s", err)
 	}
 
-	go func() {
-		i.helloing = true
+	i.t.Go(func() error {
+		for {
+			t := time.NewTimer(time.Second * time.Duration(i.holdTime))
+			select {
+			case <-t.C:
+				if i.recvedHello != nil {
+					if err := i.s.deleteSession(i.recvedHello); err != nil {
+						log.Fatalf("%s", err)
+					}
+					i.recvedHello = nil
+				}
+			case h := <-i.ch:
+				if i.recvedHello == nil {
+					i.recvedHello = h
+					err := i.s.addSession(h)
+					if err != nil {
+						log.Fatalf("%s", err)
+					}
+				}
+			case <-i.t.Dying():
+				log.Debug("returning recv hello goroutine")
+				return nil
+			}
+		}
+	})
+
+	i.t.Go(func() error {
 		t := time.NewTicker(time.Second)
 		for {
 			select {
 			case <-t.C:
-			case ch := <-i.endCh:
+			case <-i.t.Dying():
 				if err := i.p.LeaveGroup(i.i, dst); err != nil {
 					log.Errorf("%s", err)
 				}
-				i.helloing = false
-				close(ch)
-				return
+				return nil
 			}
 			tlv := ldp.NewCommonHelloParamTLV(uint16(i.holdTime), false, true)
 			msg := ldp.NewHelloMessage(200, tlv, nil)
@@ -86,12 +172,23 @@ func (i *Interface) hello() error {
 				log.Fatalf("%s", err)
 			}
 		}
-	}()
+	})
 	return nil
 }
 
 func (i *Interface) stop() {
-	ch := make(chan struct{})
-	i.endCh <- ch
-	<-ch
+	i.t.Kill(nil)
+	i.t.Wait()
+}
+
+func newInterface(s *Server, i *net.Interface) (*Interface, error) {
+	intf := &Interface{
+		s:        s,
+		i:        i,
+		p:        s.helloServer.p,
+		routerId: s.config.Global.RouterId,
+		holdTime: s.config.Global.HoldTime,
+		ch:       make(chan *hello),
+	}
+	return intf, intf.hello()
 }

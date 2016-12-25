@@ -29,10 +29,10 @@ type ConfigManager struct {
 	format    string
 	waiting   bool
 	doneCh    chan struct{}
-	ldpServer *LDPServer
+	ldpServer *Server
 }
 
-func NewConfigManager(file, format string, ldpServer *LDPServer) *ConfigManager {
+func NewConfigManager(file, format string, ldpServer *Server) *ConfigManager {
 	m := &ConfigManager{
 		ReloadCh:  make(chan struct{}, 1),
 		file:      file,
@@ -75,10 +75,11 @@ func (m *ConfigManager) Serve() {
 		}
 
 		if c.Global.RouterId != "" {
-			err := m.ldpServer.StartServer(c.Global)
+			s, err := m.ldpServer.StartServer(c.Global)
 			if err != nil {
 				log.Warnf("failed to start server: %s", err)
 			}
+			m.ldpServer = s
 		}
 
 		intfs, _ := m.ldpServer.ListInterface()

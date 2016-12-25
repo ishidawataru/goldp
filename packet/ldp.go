@@ -41,9 +41,9 @@ const (
 	TLV_TYPE_ADDRESS_LIST                      = 0x0101
 	TLV_TYPE_HOP_COUNT                         = 0x0103
 	TLV_TYPE_PATH_VECTOR                       = 0x0104
-	TLV_TYPE_GENERIC                           = 0x0200
-	TLV_TYPE_ATM                               = 0x0201
-	TLV_TYPE_FRAME_RELAY                       = 0x0202
+	TLV_TYPE_LABEL_GENERIC                     = 0x0200
+	TLV_TYPE_LABEL_ATM                         = 0x0201
+	TLV_TYPE_LABEL_FRAME_RELAY                 = 0x0202
 	TLV_TYPE_STATUS                            = 0x0300
 	TLV_TYPE_EXTENDED_STATUS                   = 0x0301 // Notification Message
 	TLV_TYPE_RETURNED_PDU                      = 0x0302 // Notification Message
@@ -65,9 +65,9 @@ var TLVTypeNameMap = map[TLVType]string{
 	TLV_TYPE_ADDRESS_LIST:              "ADDRESS-LIST",
 	TLV_TYPE_HOP_COUNT:                 "HOP-COUNT",
 	TLV_TYPE_PATH_VECTOR:               "PATH-VECTOR",
-	TLV_TYPE_GENERIC:                   "GENERIC",
-	TLV_TYPE_ATM:                       "ATM",
-	TLV_TYPE_FRAME_RELAY:               "FRAME-RELAY",
+	TLV_TYPE_LABEL_GENERIC:             "GENERIC-LABEL",
+	TLV_TYPE_LABEL_ATM:                 "ATM-LABEL",
+	TLV_TYPE_LABEL_FRAME_RELAY:         "FRAME-RELAY-LABEL",
 	TLV_TYPE_STATUS:                    "STATUS",
 	TLV_TYPE_EXTENDED_STATUS:           "EXTENDED-STATUS",
 	TLV_TYPE_RETURNED_PDU:              "RETURNED-PDU",
@@ -103,6 +103,10 @@ func parseTLV(buf []byte) (TLVInterface, []byte, error) {
 	}
 	var tlv TLVInterface
 	switch typ {
+	case TLV_TYPE_FEC:
+		tlv = &FECTLV{}
+	case TLV_TYPE_LABEL_GENERIC:
+		tlv = &LabelTLV{}
 	case TLV_TYPE_ADDRESS_LIST:
 		tlv = &AddressListTLV{}
 	case TLV_TYPE_STATUS:
@@ -130,6 +134,172 @@ type TLVInterface interface {
 	Type() TLVType
 	String() string
 	MarshalJSON() ([]byte, error)
+}
+
+const (
+	FEC_WILDCARD = 0x01
+	FEC_PREFIX   = 0x02
+)
+
+type FECElement struct {
+	Type   int
+	Family int
+	Prefix *net.IPNet
+}
+
+type FECTLV struct {
+	Elements []*FECElement
+}
+
+func (t *FECTLV) Decode(data []byte) error {
+	if len(data) < 1 {
+		return fmt.Errorf("invalid value length, expects 1 at least not %d", len(data))
+	}
+
+	t.Elements = nil
+
+	for len(data) > 0 {
+		typ := data[0]
+		switch typ {
+		case FEC_WILDCARD:
+			if len(data) > 1 || len(t.Elements) > 0 {
+				return fmt.Errorf("wildcard element must be the only FEC element in the FEC TLV")
+			}
+			t.Elements = []*FECElement{&FECElement{Type: FEC_WILDCARD}}
+			return nil
+		case FEC_PREFIX:
+			if len(data) < 4 {
+				return fmt.Errorf("invalid prefix element length, expects 4 at least not %d", len(data))
+			}
+			family := int(binary.BigEndian.Uint16(data[1:3]))
+			preLen := int(data[3])
+			byteLen := (preLen + 7) / 8
+			if len(data) < 4+byteLen {
+				return fmt.Errorf("invalid prefix element. prefix length field is %d, but remaining buffer len is %d", preLen, len(data)-4)
+			}
+			addrLen := 4
+			switch family {
+			case AFI_IP:
+				if preLen > 32 {
+					return fmt.Errorf("invalid ipv4 prefix length %d", preLen)
+				}
+			case AFI_IP6:
+				if preLen > 128 {
+					return fmt.Errorf("invalid ipv6 prefix length %d", preLen)
+				}
+				addrLen = 16
+			default:
+				return fmt.Errorf("unknown address family: %d", family)
+			}
+			b := make([]byte, addrLen)
+			copy(b, data[3:3+byteLen])
+			mask := net.CIDRMask(preLen, addrLen*8-preLen)
+			t.Elements = append(t.Elements, &FECElement{Type: FEC_PREFIX, Family: family, Prefix: &net.IPNet{IP: net.IP(b), Mask: mask}})
+			data = data[4+byteLen:]
+		}
+	}
+	return nil
+}
+
+func (t *FECTLV) Serialize() ([]byte, error) {
+	buf := []byte{}
+	for _, e := range t.Elements {
+		switch e.Type {
+		case FEC_WILDCARD:
+			if len(t.Elements) > 0 {
+				return nil, fmt.Errorf("wildcard element must be the only FEC element in the FEC TLV")
+			}
+			return []byte{FEC_WILDCARD}, nil
+		case FEC_PREFIX:
+			ones, _ := e.Prefix.Mask.Size()
+			byteLen := (ones + 7) / 8
+			b := make([]byte, byteLen)
+			copy(b, e.Prefix.IP)
+			// clear trailing bits in the last byte. rfc doesn't require
+			// this though.
+			if ones%8 != 0 {
+				mask := 0xff00 >> (uint(ones) % 8)
+				last_byte_value := b[byteLen-1] & byte(mask)
+				b[byteLen-1] = last_byte_value
+			}
+			buf = append(buf, []byte{FEC_PREFIX, byte(e.Type), byte(ones)}...)
+			buf = append(buf, b...)
+		}
+	}
+	return serializeTLV(t.Type(), buf)
+}
+
+func (t *FECTLV) Type() TLVType {
+	return TLV_TYPE_FEC
+}
+
+func (t *FECTLV) stringifyElements() []string {
+	list := make([]string, 0, len(t.Elements))
+	for _, e := range t.Elements {
+		switch e.Type {
+		case FEC_WILDCARD:
+			list = append(list, "wildcard")
+		case FEC_PREFIX:
+			list = append(list, e.Prefix.String())
+		}
+	}
+	return list
+}
+
+func (t *FECTLV) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 16))
+	buf.WriteString(fmt.Sprintf("[ FEC | %s ]", strings.Join(t.stringifyElements(), ", ")))
+	return buf.String()
+}
+
+func (t FECTLV) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Typ  TLVType  `json:"type"`
+		List []string `json:"list"`
+	}{
+		Typ:  TLV_TYPE_FEC,
+		List: t.stringifyElements(),
+	})
+}
+
+type LabelTLV struct {
+	Label int
+}
+
+func (t *LabelTLV) Decode(data []byte) error {
+	if len(data) < 4 {
+		return fmt.Errorf("invalid value length, expects 4 at least not %d", len(data))
+	}
+	label := uint32(data[0])<<16 | uint32(data[1])<<8 | uint32(data[2])
+	t.Label = int(label >> 4)
+	return nil
+}
+
+func (t *LabelTLV) Serialize() ([]byte, error) {
+	buf := make([]byte, 4)
+	label := t.Label << 4
+	buf[0] = byte((label >> 16) & 0xff)
+	buf[1] = byte((label >> 8) & 0xff)
+	buf[2] = byte(label & 0xff)
+	return serializeTLV(t.Type(), buf)
+}
+
+func (t *LabelTLV) Type() TLVType {
+	return TLV_TYPE_LABEL_GENERIC
+}
+
+func (t *LabelTLV) String() string {
+	return fmt.Sprintf("[ LABEL | %d ]", t.Label)
+}
+
+func (t *LabelTLV) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Typ   TLVType `json:"type"`
+		Label int     `json:"label"`
+	}{
+		Typ:   TLV_TYPE_LABEL_GENERIC,
+		Label: t.Label,
+	})
 }
 
 const (
@@ -605,6 +775,10 @@ func ParseMessage(buf []byte) (MessageInterface, []byte, error) {
 		msg = &AddressMessage{}
 	case MSG_TYPE_ADDRESS_WITHDRAW:
 		msg = &AddressWithdrawMessage{}
+	case MSG_TYPE_LABEL_MAPPING:
+		msg = &LabelMappingMessage{}
+	case MSG_TYPE_LABEL_REQUEST:
+		msg = &LabelRequestMessage{}
 	default:
 		return nil, nil, fmt.Errorf("unknown msg type %s", typ)
 	}
@@ -954,6 +1128,120 @@ func (m *AddressWithdrawMessage) Type() MessageType {
 func (m *AddressWithdrawMessage) String() string {
 	buf := bytes.NewBuffer(make([]byte, 0, 32))
 	buf.WriteString(fmt.Sprintf("[ ADDR-WITHDRAW %d | %s", m.ID(), m.List.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
+type LabelMappingMessage struct {
+	Message
+	FEC          *FECTLV
+	Label        *LabelTLV
+	OptionalTLVs []TLVInterface
+}
+
+func (m *LabelMappingMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	if len(tlvs) < 2 {
+		return fmt.Errorf("invalid label mapping message. lack of TLV")
+	}
+	if tlvs[0].Type() != TLV_TYPE_FEC {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_FEC, tlvs[0].Type())
+	}
+	if tlvs[1].Type() != TLV_TYPE_LABEL_GENERIC {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_LABEL_GENERIC, tlvs[1].Type())
+	}
+	m.FEC = tlvs[0].(*FECTLV)
+	m.Label = tlvs[1].(*LabelTLV)
+	m.OptionalTLVs = tlvs[2:]
+	return nil
+}
+
+func (m *LabelMappingMessage) Serialize() ([]byte, error) {
+	buf, err := m.FEC.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	buf2, err := m.Label.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	buf = append(buf, buf2...)
+	for _, o := range m.OptionalTLVs {
+		bbuf, err := o.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, bbuf...)
+	}
+	return serializeMessage(m.Type(), m.id, buf)
+}
+
+func (m *LabelMappingMessage) Type() MessageType {
+	return MSG_TYPE_LABEL_MAPPING
+}
+
+func (m *LabelMappingMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ LABEL-MAPPING %d | %s %s", m.ID(), m.FEC.String(), m.Label.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
+type LabelRequestMessage struct {
+	Message
+	FEC          *FECTLV
+	OptionalTLVs []TLVInterface
+}
+
+func (m *LabelRequestMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	if len(tlvs) < 1 {
+		return fmt.Errorf("invalid label mapping message. lack of TLV")
+	}
+	if tlvs[0].Type() != TLV_TYPE_FEC {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_FEC, tlvs[0].Type())
+	}
+	m.FEC = tlvs[0].(*FECTLV)
+	m.OptionalTLVs = tlvs[1:]
+	return nil
+}
+
+func (m *LabelRequestMessage) Serialize() ([]byte, error) {
+	buf, err := m.FEC.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range m.OptionalTLVs {
+		bbuf, err := o.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, bbuf...)
+	}
+	return serializeMessage(m.Type(), m.id, buf)
+}
+
+func (m *LabelRequestMessage) Type() MessageType {
+	return MSG_TYPE_LABEL_MAPPING
+}
+
+func (m *LabelRequestMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ LABEL-REQUEST %d | %s", m.ID(), m.FEC.String()))
 	for _, tlv := range m.OptionalTLVs {
 		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
 	}

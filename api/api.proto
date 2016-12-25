@@ -21,10 +21,17 @@ service GoldpApi {
     rpc StartServer(StartServerRequest) returns (StartServerResponse) {}
     rpc StopServer(StopServerRequest) returns (StopServerResponse) {}
     rpc GetServer(GetServerRequest) returns (GetServerResponse) {}
-//    rpc AddInterface(AddInterfaceRequest) returns (AddInterfaceResponse) {}
-//    rpc DeleteInterface(DeleteInterfaceRequest) returns (DeleteInterfaceResponse) {}
-//    rpc ListInterface(ListInterfaceRequest) returns (ListInterfaceResponse) {}
-//    rpc ListSession(ListSessionRequest) returns (ListSessionResponse) {}
+    rpc AddInterface(AddInterfaceRequest) returns (AddInterfaceResponse) {}
+    rpc DeleteInterface(DeleteInterfaceRequest) returns (DeleteInterfaceResponse) {}
+    rpc ListInterface(ListInterfaceRequest) returns (ListInterfaceResponse) {}
+    rpc ListSession(ListSessionRequest) returns (ListSessionResponse) {}
+    rpc AddInterfaceAddress(AddInterfaceAddressRequest) returns (AddInterfaceAddressResponse) {}
+    rpc DeleteInterfaceAddress(DeleteInterfaceAddressRequest) returns (DeleteInterfaceAddressResponse) {}
+    rpc AddLocalLabelMapping(AddLocalLabelMappingRequest) returns (AddLocalLabelMappingResponse) {}
+    rpc DeleteLocalLabelMapping(DeleteLocalLabelMappingRequest) returns (DeleteLocalLabelMappingResponse) {}
+    rpc GetLocalLabelMapping(GetLocalLabelMappingRequest) returns (GetLocalLabelMappingResponse) {}
+    rpc GetRemoteLabelMapping(GetRemoteLabelMappingRequest) returns (GetRemoteLabelMappingResponse) {}
+    rpc MonitorSession(MonitorSessionRequest) returns (stream MonitorSessionResponse) {}
 }
 
 message StartServerRequest  {
@@ -79,6 +86,66 @@ message ListSessionResponse {
     repeated Session sessions = 1;
 }
 
+message AddInterfaceAddressRequest {
+    Interface interface = 1;
+}
+
+message AddInterfaceAddressResponse {
+}
+
+message DeleteInterfaceAddressRequest {
+    Interface interface = 1;
+}
+
+message DeleteInterfaceAddressResponse {
+}
+
+message AddLocalLabelMappingRequest {
+    repeated string FEC = 1;
+    uint32 label = 2;
+}
+
+message AddLocalLabelMappingResponse {
+}
+
+message DeleteLocalLabelMappingRequest {
+    repeated string FEC = 1;
+}
+
+message DeleteLocalLabelMappingResponse {
+}
+
+message GetLocalLabelMappingRequest {
+    string FEC = 1;
+}
+
+message GetLocalLabelMappingResponse {
+    uint32 label = 1;
+}
+
+message GetRemoteLabelMappingRequest {
+    string FEC = 1;
+    string nexthop = 2;
+}
+
+message GetRemoteLabelMappingResponse {
+    uint32 label = 1;
+}
+
+message MonitorSessionRequest {
+}
+
+message MonitorSessionResponse {
+    enum Type {
+        ADD = 0;
+        DEL = 1;
+        UPDATE = 2;
+    }
+    Type type = 1;
+    Session session = 2;
+}
+
+
 enum LabelAdvMode {
     DOD = 0;
     DU = 1;
@@ -98,14 +165,17 @@ message Server {
 
 message Interface {
     string name = 1;
+    repeated string addresses = 2;
 }
 
 message Session {
-    string peer_id = 1;
-    string router_id = 2;
+    string local_id = 1;
+    string peer_id = 2;
     uint32 keep_alive_time = 3;
     uint32 max_pdu_length = 4;
     bool loop_detection = 5;
     uint32 path_vector_limit = 6;
     LabelAdvMode label_adv_mode = 7;
+    string prev_fsm_state = 8;
+    string fsm_state = 9;
 }

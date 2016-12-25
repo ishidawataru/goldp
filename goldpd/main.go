@@ -50,8 +50,7 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	ldpServer := server.NewLDPServer()
-	go ldpServer.Serve()
+	var ldpServer *server.Server
 
 	if opts.ConfigFile != "" {
 		configManager := server.NewConfigManager(opts.ConfigFile, opts.ConfigType, ldpServer)
