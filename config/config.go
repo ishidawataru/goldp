@@ -28,6 +28,20 @@ const (
 // maybe it is good idea to hold all value as string
 // to distinguish the value is not specified by the user ("")
 
+type Mapping struct {
+	Prefix string         `mapstructure:"prefix"`
+	Local  int            `mapstructure:"local-label"`
+	Remote map[string]int `mapstructure:"remote-label"`
+}
+
+const (
+	SESSION_STATE_NON_EXISTENT = "non-existent"
+	SESSION_STATE_INITIALIZED  = "initialized"
+	SESSION_STATE_OPENREC      = "openrec"
+	SESSION_STATE_OPENSENT     = "opensent"
+	SESSION_STATE_OPERATIONAL  = "operational"
+)
+
 type Session struct {
 	LocalId       string       `mapstructure:"local-id"`
 	PeerId        string       `mapstructure:"peer-id"`
@@ -50,8 +64,8 @@ type Interface struct {
 type LabelAdvMode string
 
 const (
-	DOD LabelAdvMode = "dod"
-	DU  LabelAdvMode = "du"
+	DOD LabelAdvMode = "dod" // Downstream on Demand
+	DU  LabelAdvMode = "du"  // Downstream Unsolicited
 )
 
 var LabelAdvModeToIntMap = map[LabelAdvMode]int{

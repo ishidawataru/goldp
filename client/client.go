@@ -153,6 +153,43 @@ func (c *Client) DeleteInterfaceAddress(intf *config.Interface) error {
 	return err
 }
 
+func (c *Client) AddLocalLabelMapping(label int, fec ...string) error {
+	_, err := c.cli.AddLocalLabelMapping(context.Background(), &api.AddLocalLabelMappingRequest{
+		FEC:   fec,
+		Label: uint32(label),
+	})
+	return err
+}
+
+func (c *Client) DeleteLocalLabelMapping(fec ...string) error {
+	_, err := c.cli.DeleteLocalLabelMapping(context.Background(), &api.DeleteLocalLabelMappingRequest{
+		FEC: fec,
+	})
+	return err
+}
+
+func (c *Client) GetLabelMapping(prefix string) (config.Mapping, error) {
+	res, err := c.cli.GetLabelMapping(context.Background(), &api.GetLabelMappingRequest{
+		Prefix: prefix,
+	})
+	if err != nil {
+		return config.Mapping{}, err
+	}
+	return res.Mapping.ToConfig(), nil
+}
+
+func (c *Client) ListLabelMapping() ([]config.Mapping, error) {
+	res, err := c.cli.ListLabelMapping(context.Background(), &api.ListLabelMappingRequest{})
+	if err != nil {
+		return nil, err
+	}
+	list := make([]config.Mapping, 0, len(res.Mapping))
+	for _, m := range res.Mapping {
+		list = append(list, m.ToConfig())
+	}
+	return list, nil
+}
+
 type MonitorSessionClient struct {
 	stream api.GoldpApi_MonitorSessionClient
 }

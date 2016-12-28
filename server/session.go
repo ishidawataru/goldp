@@ -116,6 +116,7 @@ type LDPSession struct {
 	sConf           config.Session
 	peerInitMsg     *ldp.InitMessage
 	localInitMsg    *ldp.InitMessage
+	labelWatcher    *Watcher
 	ifindex         int
 	connectInterval int
 }
@@ -249,7 +250,7 @@ func (s *LDPSession) buildInitMsg() ldp.MessageInterface {
 }
 
 // one session could contain multiple interfaces
-func (s *LDPSession) buildAddrMsg(c []config.Interface) []ldp.MessageInterface {
+func buildAddrMsg(c []config.Interface) []ldp.MessageInterface {
 	ipv4 := make([]net.IP, 0, len(c))
 	ipv6 := make([]net.IP, 0, len(c))
 	for _, i := range c {
@@ -278,6 +279,33 @@ func (s *LDPSession) buildAddrMsg(c []config.Interface) []ldp.MessageInterface {
 				Family: ldp.AFI_IP6,
 				List:   ipv6,
 			},
+		})
+	}
+	return msgs
+}
+
+func buildLabelMappingMsg(c ...config.Mapping) []ldp.MessageInterface {
+	msgs := make([]ldp.MessageInterface, 0, len(c))
+	for _, m := range c {
+		_, prefix, err := net.ParseCIDR(m.Prefix)
+		if err != nil {
+			return nil
+		}
+		fecTLV := &ldp.FECTLV{
+			Elements: []*ldp.FECElement{
+				&ldp.FECElement{
+					Type:   ldp.FEC_PREFIX,
+					Family: ldp.AFI_IP,
+					Prefix: prefix,
+				},
+			},
+		}
+		labelTLV := &ldp.LabelTLV{
+			Label: m.Local,
+		}
+		msgs = append(msgs, &ldp.LabelMappingMessage{
+			FEC:   fecTLV,
+			Label: labelTLV,
 		})
 	}
 	return msgs
@@ -371,6 +399,36 @@ func (s *LDPSession) handleMsg(msg ldp.MessageInterface) error {
 		//		}
 	}
 	return nil
+}
+
+func (s *LDPSession) monitorLocalLabel() error {
+	w, err := s.s.monitorServer.monitor(EVENT_LABEL_LOCAL)
+	if err != nil {
+		return err
+	}
+	s.labelWatcher = w
+	go func() error {
+		for {
+			e := w.Next()
+			if e == nil {
+				return nil
+			}
+			d := e.Data.(config.Mapping)
+			switch e.Type {
+			case EVENT_LABEL_LOCAL_ADD:
+				if err := s.write(buildLabelMappingMsg(d)...); err != nil {
+					return err
+				}
+			}
+		}
+	}()
+	return nil
+}
+
+func (s *LDPSession) stopMonitorLocalLabel() {
+	if s.labelWatcher != nil {
+		s.labelWatcher.Stop()
+	}
 }
 
 func (s *LDPSession) loop() error {
@@ -490,7 +548,7 @@ func (s *LDPSession) loop() error {
 				break
 			}
 
-			if err := s.write(s.buildAddrMsg([]config.Interface{i})...); err != nil {
+			if err := s.write(buildAddrMsg([]config.Interface{i})...); err != nil {
 				log.Warnf("failed to write address messages: %s", err)
 				next = NON_EXISTENT
 				break

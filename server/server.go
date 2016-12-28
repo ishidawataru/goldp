@@ -27,8 +27,22 @@ import (
 )
 
 type mapping struct {
+	prefix string
 	local  int
 	remote map[string]int //key: LDP ID, value: label
+	origin bool
+}
+
+func (m *mapping) ToConfig() config.Mapping {
+	r := make(map[string]int)
+	for k, v := range m.remote {
+		r[k] = v
+	}
+	return config.Mapping{
+		Prefix: m.prefix,
+		Local:  m.local,
+		Remote: r,
+	}
 }
 
 type Server struct {
@@ -45,6 +59,7 @@ type Server struct {
 	nexthops      map[string]ldp.LDPIdentifier // key: nexthop, value: LDP ID
 	fromToLDPID   map[string]string            // key: src IP,  value: LDP ID
 	table         map[string]*mapping          // key: prefix,  value: mapping
+	allocator     *Allocator
 }
 
 func (server *Server) GetConfig() (config.Config, error) {
@@ -249,11 +264,27 @@ func (server *Server) AddLocalLabelMapping(label int, fec ...string) error {
 		m, ok := server.table[prefix]
 		if !ok {
 			m = &mapping{
+				prefix: prefix,
 				remote: make(map[string]int),
 			}
 		}
-		m.local = label
-		server.table[prefix] = m
+		if m.local != label {
+			err := server.allocator.Flag(label)
+			if err != nil {
+				return err
+			}
+			if m.local != 0 {
+				err = server.allocator.Release(m.local)
+				if err != nil {
+					server.allocator.Release(label)
+					return err
+				}
+			}
+			m.local = label
+			m.origin = true
+			server.table[prefix] = m
+			server.monitorServer.emit(EVENT_LABEL_LOCAL_ADD, m.ToConfig())
+		}
 	}
 	return nil
 }
@@ -266,50 +297,61 @@ func (server *Server) DeleteLocalLabelMapping(fec ...string) error {
 		if !ok {
 			continue
 		}
-		m.local = 0
+		if m.local != 0 {
+			server.monitorServer.emit(EVENT_LABEL_LOCAL_DEL, m.ToConfig())
+			m.local = 0
+		}
 	}
 	return nil
 }
 
-func (server *Server) GetLocalLabelMapping(fec string) (int, error) {
+func (server *Server) GetLabelMapping(fec string) (config.Mapping, error) {
 	server.m.Lock()
 	defer server.m.Unlock()
 	m, ok := server.table[fec]
-	if !ok || m.local == 0 {
-		return 0, fmt.Errorf("FEC: %s doesn't exist", fec)
+	if !ok {
+		return config.Mapping{}, fmt.Errorf("FEC: %s doesn't exist", fec)
 	}
-	return m.local, nil
+	return m.ToConfig(), nil
+}
+
+func (server *Server) listLabelMapping() ([]config.Mapping, error) {
+	t := make([]config.Mapping, 0, len(server.table))
+	for _, m := range server.table {
+		t = append(t, m.ToConfig())
+	}
+	return t, nil
+}
+
+func (server *Server) ListLabelMapping() ([]config.Mapping, error) {
+	server.m.Lock()
+	defer server.m.Unlock()
+	return server.listLabelMapping()
 }
 
 func (server *Server) addRemoteLabelMapping(id ldp.LDPIdentifier, label int, fec ...string) error {
 	server.m.Lock()
 	defer server.m.Unlock()
+	log.Info("add remote label")
 	for _, prefix := range fec {
 		m, ok := server.table[prefix]
 		if !ok {
+			local, err := server.allocator.Next()
+			if err != nil {
+				return err
+			}
 			m = &mapping{
+				prefix: prefix,
+				local:  local,
 				remote: make(map[string]int),
 			}
 		}
 		m.remote[id.String()] = label
 		server.table[prefix] = m
+
+		// TODO send local label to other peers
 	}
 	return nil
-}
-
-func (server *Server) GetRemoteLabelMapping(fec, nexthop string) (int, error) {
-	server.m.Lock()
-	defer server.m.Unlock()
-	id, ok := server.nexthops[nexthop]
-	if !ok {
-		return 0, fmt.Errorf("couldn't find a LDP sesssion with nexthop %s", nexthop)
-	}
-	m, ok := server.table[fec]
-	if !ok || m.remote[id.String()] == 0 {
-		// TODO send request on demand
-		return 0, fmt.Errorf("FEC: %s doesn't exist", fec)
-	}
-	return m.remote[id.String()], nil
 }
 
 func (server *Server) requestMapping(id ldp.LDPIdentifier, fec ...string) error {
@@ -348,6 +390,12 @@ func (server *Server) loop() error {
 	if server == nil {
 		return fmt.Errorf("server is not started")
 	}
+
+	sessionW, err := server.MonitorSession()
+	if err != nil {
+		return err
+	}
+
 	for {
 		select {
 		case <-server.t.Dying():
@@ -355,46 +403,74 @@ func (server *Server) loop() error {
 			close(server.connCh)
 			return nil
 		case h, ok := <-server.helloCh:
-			if !ok {
-				continue
-			}
-			id, _ := ldp.NewLDPIdentifier(fmt.Sprintf("%s:0", server.config.Global.RouterId))
-			if h.id.Equal(id) {
-				continue
-			}
-			server.m.RLock()
-			server.fromToLDPID[h.from.IP.String()] = h.id.String()
-			if i, y := server.interfaces[h.ifindex]; y {
-				server.m.RUnlock()
-				i.recv(h)
-			} else {
-				log.Warnf("suspicious hello: %#v", h)
-				server.m.RUnlock()
-			}
+			func() {
+				if !ok {
+					return
+				}
+				id, _ := ldp.NewLDPIdentifier(fmt.Sprintf("%s:0", server.config.Global.RouterId))
+				if h.id.Equal(id) {
+					return
+				}
+				server.m.RLock()
+				defer server.m.RUnlock()
+				server.fromToLDPID[h.from.IP.String()] = h.id.String()
+				if i, y := server.interfaces[h.ifindex]; y {
+					i.recv(h)
+				} else {
+					log.Warnf("suspicious hello: %#v", h)
+				}
+			}()
 		case c := <-server.connCh:
-			from := c.RemoteAddr().(*net.TCPAddr).IP.String()
-			// If LSR1 cannot find a matching Hello adjacency, it sends a
-			// Session Rejected/No Hello Error Notification message and
-			// closes the TCP connection.
-			server.m.RLock()
-			id := server.fromToLDPID[from]
-			if s, y := server.sessions[id]; !y {
-				log.Warnf("not configured neighbor %s", from)
-				c.Close()
-				server.m.RUnlock()
-				continue
-			} else if s.Active() {
-				log.Warnf("incoming connection but this session is active %s", from)
-				server.m.RUnlock()
-				continue
-			}
-			select {
-			case server.sessions[id].ConnCh <- c:
-			default:
-				c.Close()
-				log.Warnf("closed incoming connection from %s to avoid blocking", from)
-			}
-			server.m.RUnlock()
+			func() {
+				server.m.RLock()
+				defer server.m.RUnlock()
+				from := c.RemoteAddr().(*net.TCPAddr).IP.String()
+				// If LSR1 cannot find a matching Hello adjacency, it sends a
+				// Session Rejected/No Hello Error Notification message and
+				// closes the TCP connection.
+				id := server.fromToLDPID[from]
+				if s, y := server.sessions[id]; !y {
+					log.Warnf("not configured neighbor %s", from)
+					c.Close()
+					return
+				} else if s.Active() {
+					log.Warnf("incoming connection but this session is active %s", from)
+					return
+				}
+				select {
+				case server.sessions[id].ConnCh <- c:
+				default:
+					c.Close()
+					log.Warnf("closed incoming connection from %s to avoid blocking", from)
+				}
+			}()
+		case e := <-sessionW.ch:
+			func() {
+				server.m.Lock()
+				defer server.m.Unlock()
+				if e.Type != EVENT_SESSION_UPDATE {
+					return
+				}
+
+				d := e.Data.(config.Session)
+				state := d.FSMState
+				prevState := d.PrevFSMState
+				id := d.PeerId
+				session := server.sessions[id]
+				if state == config.SESSION_STATE_OPERATIONAL {
+					log.Infof("send initial local label")
+					list, _ := server.listLabelMapping()
+					err := session.write(buildLabelMappingMsg(list...)...)
+					if err != nil {
+						log.Warnf("err: %v", err)
+					}
+					session.monitorLocalLabel()
+				} else if prevState == config.SESSION_STATE_OPERATIONAL {
+					log.Infof("delete mapping from this peer")
+					session.stopMonitorLocalLabel()
+				}
+				log.Infof("Session Watcher: %v", e)
+			}()
 		}
 	}
 	return nil
@@ -426,7 +502,10 @@ func (server *Server) StartServer(g config.Global) (*Server, error) {
 	server.tcpLn = ln
 
 	server.config.Global = g
-	server.helloServer = newHelloServer(server.helloCh)
+	server.helloServer, err = newHelloServer(server.helloCh)
+	if err != nil {
+		return server, err
+	}
 	server.t.Go(server.helloServer.serve)
 
 	server.t.Go(func() error {
@@ -483,5 +562,7 @@ func New() *Server {
 		monitorServer: newMonitorServer(),
 		nexthops:      make(map[string]ldp.LDPIdentifier),
 		fromToLDPID:   make(map[string]string),
+		table:         make(map[string]*mapping),
+		allocator:     NewAllocator(200, 100000), // TODO make range configurable
 	}
 }

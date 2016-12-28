@@ -129,6 +129,28 @@ func (m *Session) FromConfig(c *config.Session) {
 	m.FsmState = c.FSMState
 }
 
+func (m *Mapping) ToConfig() config.Mapping {
+	remote := make(map[string]int)
+	for k, v := range m.Remote {
+		remote[k] = int(v)
+	}
+	return config.Mapping{
+		Prefix: m.Prefix,
+		Local:  int(m.Local),
+		Remote: remote,
+	}
+}
+
+func (m *Mapping) FromConfig(c *config.Mapping) {
+	m.Prefix = c.Prefix
+	m.Local = uint32(c.Local)
+	remote := make(map[string]uint32)
+	for k, v := range c.Remote {
+		remote[k] = uint32(v)
+	}
+	m.Remote = remote
+}
+
 func (g *GRPCServer) StartServer(ctx context.Context, arg *StartServerRequest) (*StartServerResponse, error) {
 	if arg.Server == nil {
 		return nil, fmt.Errorf("invalid request: server is nil")
@@ -228,23 +250,31 @@ func (g *GRPCServer) DeleteLocalLabelMapping(_ context.Context, arg *DeleteLocal
 	return &DeleteLocalLabelMappingResponse{}, g.ldpServer.DeleteLocalLabelMapping(arg.FEC...)
 }
 
-func (g *GRPCServer) GetLocalLabelMapping(_ context.Context, arg *GetLocalLabelMappingRequest) (*GetLocalLabelMappingResponse, error) {
-	label, err := g.ldpServer.GetLocalLabelMapping(arg.FEC)
+func (g *GRPCServer) GetLabelMapping(_ context.Context, arg *GetLabelMappingRequest) (*GetLabelMappingResponse, error) {
+	mapping, err := g.ldpServer.GetLabelMapping(arg.Prefix)
 	if err != nil {
 		return nil, err
 	}
-	return &GetLocalLabelMappingResponse{
-		Label: uint32(label),
+	m := &Mapping{}
+	m.FromConfig(&mapping)
+	return &GetLabelMappingResponse{
+		Mapping: m,
 	}, nil
 }
 
-func (g *GRPCServer) GetRemoteLabelMapping(_ context.Context, arg *GetRemoteLabelMappingRequest) (*GetRemoteLabelMappingResponse, error) {
-	label, err := g.ldpServer.GetRemoteLabelMapping(arg.FEC, arg.Nexthop)
+func (g *GRPCServer) ListLabelMapping(_ context.Context, _ *ListLabelMappingRequest) (*ListLabelMappingResponse, error) {
+	list, err := g.ldpServer.ListLabelMapping()
 	if err != nil {
 		return nil, err
 	}
-	return &GetRemoteLabelMappingResponse{
-		Label: uint32(label),
+	l := make([]*Mapping, 0, len(list))
+	for _, mapping := range list {
+		m := &Mapping{}
+		m.FromConfig(&mapping)
+		l = append(l, m)
+	}
+	return &ListLabelMappingResponse{
+		Mapping: l,
 	}, nil
 }
 

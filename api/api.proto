@@ -29,8 +29,8 @@ service GoldpApi {
     rpc DeleteInterfaceAddress(DeleteInterfaceAddressRequest) returns (DeleteInterfaceAddressResponse) {}
     rpc AddLocalLabelMapping(AddLocalLabelMappingRequest) returns (AddLocalLabelMappingResponse) {}
     rpc DeleteLocalLabelMapping(DeleteLocalLabelMappingRequest) returns (DeleteLocalLabelMappingResponse) {}
-    rpc GetLocalLabelMapping(GetLocalLabelMappingRequest) returns (GetLocalLabelMappingResponse) {}
-    rpc GetRemoteLabelMapping(GetRemoteLabelMappingRequest) returns (GetRemoteLabelMappingResponse) {}
+    rpc GetLabelMapping(GetLabelMappingRequest) returns (GetLabelMappingResponse) {}
+    rpc ListLabelMapping(ListLabelMappingRequest) returns (ListLabelMappingResponse) {}
     rpc MonitorSession(MonitorSessionRequest) returns (stream MonitorSessionResponse) {}
 }
 
@@ -115,21 +115,19 @@ message DeleteLocalLabelMappingRequest {
 message DeleteLocalLabelMappingResponse {
 }
 
-message GetLocalLabelMappingRequest {
-    string FEC = 1;
+message GetLabelMappingRequest {
+    string prefix = 1;
 }
 
-message GetLocalLabelMappingResponse {
-    uint32 label = 1;
+message GetLabelMappingResponse {
+    Mapping mapping = 1;
 }
 
-message GetRemoteLabelMappingRequest {
-    string FEC = 1;
-    string nexthop = 2;
+message ListLabelMappingRequest {
 }
 
-message GetRemoteLabelMappingResponse {
-    uint32 label = 1;
+message ListLabelMappingResponse {
+    repeated Mapping mapping = 1;
 }
 
 message MonitorSessionRequest {
@@ -178,4 +176,10 @@ message Session {
     LabelAdvMode label_adv_mode = 7;
     string prev_fsm_state = 8;
     string fsm_state = 9;
+}
+
+message Mapping {
+    string prefix = 1;
+    uint32 local = 2;
+    map<string, uint32> remote = 3;
 }

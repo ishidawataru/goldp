@@ -175,7 +175,7 @@ func (t *FECTLV) Decode(data []byte) error {
 			preLen := int(data[3])
 			byteLen := (preLen + 7) / 8
 			if len(data) < 4+byteLen {
-				return fmt.Errorf("invalid prefix element. prefix length field is %d, but remaining buffer len is %d", preLen, len(data)-4)
+				return fmt.Errorf("invalid prefix element. prefix length field is %d, but remaining buffer len is %d\nbuf: %v", preLen, len(data)-4, data)
 			}
 			addrLen := 4
 			switch family {
@@ -192,8 +192,8 @@ func (t *FECTLV) Decode(data []byte) error {
 				return fmt.Errorf("unknown address family: %d", family)
 			}
 			b := make([]byte, addrLen)
-			copy(b, data[3:3+byteLen])
-			mask := net.CIDRMask(preLen, addrLen*8-preLen)
+			copy(b, data[4:4+byteLen])
+			mask := net.CIDRMask(preLen, addrLen*8)
 			t.Elements = append(t.Elements, &FECElement{Type: FEC_PREFIX, Family: family, Prefix: &net.IPNet{IP: net.IP(b), Mask: mask}})
 			data = data[4+byteLen:]
 		}
@@ -222,7 +222,9 @@ func (t *FECTLV) Serialize() ([]byte, error) {
 				last_byte_value := b[byteLen-1] & byte(mask)
 				b[byteLen-1] = last_byte_value
 			}
-			buf = append(buf, []byte{FEC_PREFIX, byte(e.Type), byte(ones)}...)
+			bbuf := make([]byte, 2)
+			binary.BigEndian.PutUint16(bbuf, uint16(e.Family))
+			buf = append(buf, []byte{FEC_PREFIX, bbuf[0], bbuf[1], byte(ones)}...)
 			buf = append(buf, b...)
 		}
 	}

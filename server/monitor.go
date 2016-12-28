@@ -16,6 +16,7 @@
 package server
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -25,9 +26,29 @@ const (
 	EVENT_SESSION_ADD EventType = 1 << iota
 	EVENT_SESSION_DEL
 	EVENT_SESSION_UPDATE
+	EVENT_LABEL_LOCAL_ADD
+	EVENT_LABEL_LOCAL_DEL
 
-	EVENT_SESSION EventType = EVENT_SESSION_ADD | EVENT_SESSION_DEL | EVENT_SESSION_UPDATE
+	EVENT_SESSION     EventType = EVENT_SESSION_ADD | EVENT_SESSION_DEL | EVENT_SESSION_UPDATE
+	EVENT_LABEL_LOCAL EventType = EVENT_LABEL_LOCAL_ADD | EVENT_LABEL_LOCAL_DEL
+	EVENT_LABEL       EventType = EVENT_LABEL_LOCAL
 )
+
+func (t EventType) String() string {
+	switch t {
+	case EVENT_SESSION_ADD:
+		return "SESSION_ADD"
+	case EVENT_SESSION_DEL:
+		return "SESSION_DEL"
+	case EVENT_SESSION_UPDATE:
+		return "SESSION_UPDATE"
+	case EVENT_LABEL_LOCAL_ADD:
+		return "LABEL_LOCAL_ADD"
+	case EVENT_LABEL_LOCAL_DEL:
+		return "LABEL_LOCAL_DEL"
+	}
+	return fmt.Sprintf("unknownEvent(%d)", t)
+}
 
 type Event struct {
 	Type EventType

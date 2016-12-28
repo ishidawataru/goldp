@@ -38,14 +38,6 @@ type helloServer struct {
 }
 
 func (s *helloServer) serve() error {
-	conn, err := net.ListenPacket("udp4", fmt.Sprintf("224.0.0.2:%d", ldp.UDP_PORT))
-	if err != nil {
-		return err
-	}
-	s.p = ipv4.NewPacketConn(conn)
-	if err := s.p.SetControlMessage(ipv4.FlagInterface, true); err != nil {
-		return err
-	}
 	for {
 		buf := make([]byte, 128)
 		_, cm, from, err := s.p.ReadFrom(buf)
@@ -83,8 +75,17 @@ func (s *helloServer) stop() error {
 	return nil
 }
 
-func newHelloServer(ch chan *hello) *helloServer {
-	return &helloServer{
-		helloCh: ch,
+func newHelloServer(ch chan *hello) (*helloServer, error) {
+	conn, err := net.ListenPacket("udp4", fmt.Sprintf("224.0.0.2:%d", ldp.UDP_PORT))
+	if err != nil {
+		return nil, err
 	}
+	s := &helloServer{
+		helloCh: ch,
+		p:       ipv4.NewPacketConn(conn),
+	}
+	if err := s.p.SetControlMessage(ipv4.FlagInterface, true); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
