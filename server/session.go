@@ -311,6 +311,29 @@ func buildLabelMappingMsg(c ...config.Mapping) []ldp.MessageInterface {
 	return msgs
 }
 
+func buildLabelWithdrawMsg(c ...config.Mapping) []ldp.MessageInterface {
+	msgs := make([]ldp.MessageInterface, 0, len(c))
+	for _, m := range c {
+		_, prefix, err := net.ParseCIDR(m.Prefix)
+		if err != nil {
+			return nil
+		}
+		fecTLV := &ldp.FECTLV{
+			Elements: []*ldp.FECElement{
+				&ldp.FECElement{
+					Type:   ldp.FEC_PREFIX,
+					Family: ldp.AFI_IP,
+					Prefix: prefix,
+				},
+			},
+		}
+		msgs = append(msgs, &ldp.LabelWithdrawMessage{
+			FEC: fecTLV,
+		})
+	}
+	return msgs
+}
+
 func nak(code ldp.StatusCode) ldp.MessageInterface {
 	return &ldp.NotificationMessage{
 		Status: &ldp.StatusTLV{
@@ -378,13 +401,13 @@ func (s *LDPSession) handleMsg(msg ldp.MessageInterface) error {
 		return s.s.delNexthop(s.peerID, addrs...)
 	case ldp.MSG_TYPE_LABEL_MAPPING:
 		m := msg.(*ldp.LabelMappingMessage)
-		addrs := make([]string, 0, len(m.FEC.Elements))
+		prefix := make([]string, 0, len(m.FEC.Elements))
 		for _, a := range m.FEC.Elements {
-			addrs = append(addrs, a.Prefix.String())
+			prefix = append(prefix, a.Prefix.String())
 		}
 		label := m.Label.Label
 		// TODO msg id handling
-		return s.s.addRemoteLabelMapping(s.peerID, label, addrs...)
+		return s.s.addRemoteLabelMapping(s.peerID, label, prefix...)
 	case ldp.MSG_TYPE_LABEL_REQUEST:
 		m := msg.(*ldp.LabelRequestMessage)
 		addrs := make([]string, 0, len(m.FEC.Elements))
@@ -397,6 +420,17 @@ func (s *LDPSession) handleMsg(msg ldp.MessageInterface) error {
 		//		if len(m.FEC.Elements) == 1 && m.FEC.Elements[0].Type == ldp.FEC_WILDCARD {
 		//		    return s.s.
 		//		}
+		m := msg.(*ldp.LabelWithdrawMessage)
+		prefix := make([]string, 0, len(m.FEC.Elements))
+		for _, a := range m.FEC.Elements {
+			prefix = append(prefix, a.Prefix.String())
+		}
+		label := 0
+		if m.Label != nil {
+			label = m.Label.Label
+		}
+		// TODO msg id handling
+		return s.s.delRemoteLabelMapping(s.peerID, label, prefix...)
 	}
 	return nil
 }
@@ -417,6 +451,10 @@ func (s *LDPSession) monitorLocalLabel() error {
 			switch e.Type {
 			case EVENT_LABEL_LOCAL_ADD:
 				if err := s.write(buildLabelMappingMsg(d)...); err != nil {
+					return err
+				}
+			case EVENT_LABEL_LOCAL_DEL:
+				if err := s.write(buildLabelWithdrawMsg(d)...); err != nil {
 					return err
 				}
 			}
@@ -621,6 +659,11 @@ func (s *LDPSession) stop() {
 		s.readT.Kill(nil)
 		s.readT.Wait()
 	}
+	s.sConf.PrevFSMState = s.sConf.FSMState
+	s.sConf.FSMState = NON_EXISTENT.String()
+	go func() {
+		s.s.monitorServer.emit(EVENT_SESSION_UPDATE, s.ToConfig())
+	}()
 }
 
 func newLDPSession(h *hello, server *Server) (*LDPSession, error) {

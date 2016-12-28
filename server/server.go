@@ -113,11 +113,11 @@ func (server *Server) DeleteInterface(d config.Interface) error {
 	} else {
 		i.stop()
 		delete(server.interfaces, intf.Index)
-		for k, s := range server.sessions {
+		for _, s := range server.sessions {
 			if intf.Index == s.ifindex {
 				// TODO consider session with multiple interface associated
 				s.stop()
-				delete(server.sessions, k)
+				server.monitorServer.emit(EVENT_SESSION_DEL, s.ToConfig())
 			}
 		}
 		intfs := make([]config.Interface, 0, len(server.config.Interfaces))
@@ -299,7 +299,11 @@ func (server *Server) DeleteLocalLabelMapping(fec ...string) error {
 		}
 		if m.local != 0 {
 			server.monitorServer.emit(EVENT_LABEL_LOCAL_DEL, m.ToConfig())
+			server.allocator.Release(m.local)
 			m.local = 0
+			if len(m.remote) == 0 {
+				delete(server.table, prefix)
+			}
 		}
 	}
 	return nil
@@ -349,7 +353,52 @@ func (server *Server) addRemoteLabelMapping(id ldp.LDPIdentifier, label int, fec
 		m.remote[id.String()] = label
 		server.table[prefix] = m
 
-		// TODO send local label to other peers
+		if !ok {
+			server.monitorServer.emit(EVENT_LABEL_LOCAL_ADD, m.ToConfig())
+		}
+	}
+	return nil
+}
+
+func (server *Server) delRemoteLabelMapping(id ldp.LDPIdentifier, label int, fec ...string) error {
+	server.m.Lock()
+	defer server.m.Unlock()
+	log.Info("del remote label")
+	for _, prefix := range fec {
+		m, ok := server.table[prefix]
+		if !ok {
+			continue
+		}
+		c := m.ToConfig()
+		delete(m.remote, id.String())
+		server.table[prefix] = m
+		if !m.origin && len(m.remote) == 0 {
+			err := server.allocator.Release(m.local)
+			if err != nil {
+				return err
+			}
+			delete(server.table, prefix)
+			server.monitorServer.emit(EVENT_LABEL_LOCAL_DEL, c)
+		}
+	}
+	return nil
+}
+
+func (server *Server) delRemoteLabelMappingAll(id ldp.LDPIdentifier) error {
+	sid := id.String()
+	del := make([]string, 0)
+	for k, m := range server.table {
+		delete(m.remote, sid)
+		if !m.origin && len(m.remote) == 0 {
+			err := server.allocator.Release(m.local)
+			if err != nil {
+				return err
+			}
+			del = append(del, k)
+		}
+	}
+	for _, k := range del {
+		delete(server.table, k)
 	}
 	return nil
 }
@@ -467,7 +516,14 @@ func (server *Server) loop() error {
 					session.monitorLocalLabel()
 				} else if prevState == config.SESSION_STATE_OPERATIONAL {
 					log.Infof("delete mapping from this peer")
+					err := server.delRemoteLabelMappingAll(session.peerID)
+					if err != nil {
+						log.Warnf("err: %v", err)
+					}
 					session.stopMonitorLocalLabel()
+					if !session.t.Alive() {
+						delete(server.sessions, id)
+					}
 				}
 				log.Infof("Session Watcher: %v", e)
 			}()

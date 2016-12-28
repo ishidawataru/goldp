@@ -781,6 +781,8 @@ func ParseMessage(buf []byte) (MessageInterface, []byte, error) {
 		msg = &LabelMappingMessage{}
 	case MSG_TYPE_LABEL_REQUEST:
 		msg = &LabelRequestMessage{}
+	case MSG_TYPE_LABEL_WITHDRAW:
+		msg = &LabelWithdrawMessage{}
 	default:
 		return nil, nil, fmt.Errorf("unknown msg type %s", typ)
 	}
@@ -1244,6 +1246,75 @@ func (m *LabelRequestMessage) Type() MessageType {
 func (m *LabelRequestMessage) String() string {
 	buf := bytes.NewBuffer(make([]byte, 0, 32))
 	buf.WriteString(fmt.Sprintf("[ LABEL-REQUEST %d | %s", m.ID(), m.FEC.String()))
+	for _, tlv := range m.OptionalTLVs {
+		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
+	}
+	buf.WriteString(" ]")
+	return buf.String()
+}
+
+type LabelWithdrawMessage struct {
+	Message
+	FEC          *FECTLV
+	Label        *LabelTLV
+	OptionalTLVs []TLVInterface
+}
+
+func (m *LabelWithdrawMessage) Decode(data []byte) error {
+	id, tlvs, err := parseMessage1(data)
+	if err != nil {
+		return err
+	}
+	m.id = id
+	if len(tlvs) < 1 {
+		return fmt.Errorf("invalid label withdraw message. lack of TLV")
+	}
+	if tlvs[0].Type() != TLV_TYPE_FEC {
+		return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_FEC, tlvs[0].Type())
+	}
+	m.FEC = tlvs[0].(*FECTLV)
+	if len(tlvs) > 1 {
+		if tlvs[1].Type() != TLV_TYPE_LABEL_GENERIC {
+			return fmt.Errorf("invalid tlv type. expect %s but got %s", TLV_TYPE_LABEL_GENERIC, tlvs[1].Type())
+		}
+		m.Label = tlvs[1].(*LabelTLV)
+		m.OptionalTLVs = tlvs[2:]
+	}
+	return nil
+}
+
+func (m *LabelWithdrawMessage) Serialize() ([]byte, error) {
+	buf, err := m.FEC.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	if m.Label != nil {
+		buf2, err := m.Label.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, buf2...)
+	}
+	for _, o := range m.OptionalTLVs {
+		bbuf, err := o.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, bbuf...)
+	}
+	return serializeMessage(m.Type(), m.id, buf)
+}
+
+func (m *LabelWithdrawMessage) Type() MessageType {
+	return MSG_TYPE_LABEL_WITHDRAW
+}
+
+func (m *LabelWithdrawMessage) String() string {
+	buf := bytes.NewBuffer(make([]byte, 0, 32))
+	buf.WriteString(fmt.Sprintf("[ LABEL-WITHDRAW %d | %s", m.ID(), m.FEC.String()))
+	if m.Label != nil {
+		buf.WriteString(fmt.Sprintf(" %s", m.Label.String()))
+	}
 	for _, tlv := range m.OptionalTLVs {
 		buf.WriteString(fmt.Sprintf(", %s", tlv.String()))
 	}
