@@ -32,9 +32,13 @@ FROM {0}
 WORKDIR /root
 RUN apt-get update && apt-get install -qy quagga telnet vim tcpdump
 RUN sed -i -e 's/zebra=no/zebra=yes/g' -e 's/ospfd=no/ospfd=yes/g' /etc/quagga/daemons
+RUN go get -v github.com/ishidawataru/goldp/goldpd
+RUN go get -v github.com/ishidawataru/goldp/goldpctl
 ADD goldp $GOPATH/src/github.com/ishidawataru/goldp
 RUN go get -v github.com/ishidawataru/goldp/goldpd
+RUN go get -v github.com/ishidawataru/goldp/goldpctl
 RUN go install github.com/ishidawataru/goldp/goldpd
+RUN go install github.com/ishidawataru/goldp/goldpctl
 '''.format(from_image)
         with tarfile.open('/tmp/goldp.tgz', 'w:gz') as tar:
             pwd = os.getcwd()
