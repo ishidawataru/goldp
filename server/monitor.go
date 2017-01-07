@@ -55,53 +55,70 @@ type Event struct {
 	Data interface{}
 }
 
-type Watcher struct {
+type Watcher interface {
+	Stop()
+	Next() *Event
+	emit(*Event) bool
+	ch() <-chan *Event
+}
+
+type SyncWatcher struct {
 	t   EventType
-	ch  chan *Event
+	c   chan *Event
 	end chan struct{}
 }
 
-func (w *Watcher) Stop() {
+func (w *SyncWatcher) Stop() {
 	close(w.end)
 }
 
-func (w *Watcher) Next() *Event {
+func (w *SyncWatcher) Next() *Event {
 	select {
-	case e := <-w.ch:
+	case e := <-w.c:
 		return e
 	case <-w.end:
 		return nil
 	}
 }
 
-func newWatcher(t EventType) *Watcher {
-	return &Watcher{
+func (w *SyncWatcher) emit(ev *Event) bool {
+	if w.t&ev.Type > 0 {
+		select {
+		case w.c <- ev:
+		case <-w.end:
+			return false
+		}
+	}
+	return true
+}
+
+func (w *SyncWatcher) ch() <-chan *Event {
+	return w.c
+}
+
+func newSyncWatcher(t EventType) Watcher {
+	return &SyncWatcher{
 		t:   t,
-		ch:  make(chan *Event),
+		c:   make(chan *Event),
 		end: make(chan struct{}),
 	}
 }
 
 type monitorServer struct {
 	m  sync.RWMutex
-	ws []*Watcher
+	ws []Watcher
 }
 
 func (s *monitorServer) emit(t EventType, data interface{}) error {
 	s.m.Lock()
 	defer s.m.Unlock()
-	ws := make([]*Watcher, 0, len(s.ws))
+	ws := make([]Watcher, 0, len(s.ws))
+	ev := &Event{
+		Type: t,
+		Data: data,
+	}
 	for _, w := range s.ws {
-		if w.t&t > 0 {
-			select {
-			case w.ch <- &Event{
-				Type: t,
-				Data: data,
-			}:
-				ws = append(ws, w)
-			case <-w.end:
-			}
-		} else {
+		if w.emit(ev) {
 			ws = append(ws, w)
 		}
 	}
@@ -109,16 +126,16 @@ func (s *monitorServer) emit(t EventType, data interface{}) error {
 	return nil
 }
 
-func (s *monitorServer) monitor(t EventType) (*Watcher, error) {
+func (s *monitorServer) monitor(t EventType) (Watcher, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
-	w := newWatcher(t)
+	w := newSyncWatcher(t)
 	s.ws = append(s.ws, w)
 	return w, nil
 }
 
 func newMonitorServer() *monitorServer {
 	return &monitorServer{
-		ws: make([]*Watcher, 0),
+		ws: make([]Watcher, 0),
 	}
 }

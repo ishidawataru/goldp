@@ -71,12 +71,10 @@ func (server *Server) GetConfig() (config.Config, error) {
 	return server.config, nil
 }
 
-func (server *Server) AddInterface(d config.Interface) error {
+func (server *Server) addInterface(d config.Interface, init bool) error {
 	if server == nil {
 		return fmt.Errorf("server is not started")
 	}
-	server.m.Lock()
-	defer server.m.Unlock()
 	intf, err := getIntf(d)
 	if err != nil {
 		return err
@@ -85,9 +83,16 @@ func (server *Server) AddInterface(d config.Interface) error {
 		return fmt.Errorf("interface %s is already configured", intf.Name)
 	}
 
-	d.Name = intf.Name
-	d.Index = intf.Index
-	server.config.Interfaces = append(server.config.Interfaces, d)
+	if !init {
+		d.Name = intf.Name
+		d.Index = intf.Index
+		server.config.Interfaces = append(server.config.Interfaces, d)
+	}
+
+	if server.config.Global.RouterId == "" {
+		log.Warn("delay adding interface. server is not running yet")
+		return nil
+	}
 
 	i, err := newInterface(server, intf)
 	if err != nil {
@@ -95,6 +100,12 @@ func (server *Server) AddInterface(d config.Interface) error {
 	}
 	server.interfaces[intf.Index] = i
 	return i.addAddress(d.Addresses...)
+}
+
+func (server *Server) AddInterface(d config.Interface) error {
+	server.m.Lock()
+	defer server.m.Unlock()
+	return server.addInterface(d, false)
 }
 
 func (server *Server) DeleteInterface(d config.Interface) error {
@@ -108,6 +119,20 @@ func (server *Server) DeleteInterface(d config.Interface) error {
 	if err != nil {
 		return err
 	}
+
+	intfs := make([]config.Interface, 0, len(server.config.Interfaces))
+	for _, c := range server.config.Interfaces {
+		if c.Name == intf.Name {
+			continue
+		}
+		intfs = append(intfs, c)
+	}
+	server.config.Interfaces = intfs
+
+	if server.config.Global.RouterId == "" {
+		return nil
+	}
+
 	if i, y := server.interfaces[intf.Index]; !y {
 		return fmt.Errorf("not found interface %s", intf.Name)
 	} else {
@@ -120,14 +145,6 @@ func (server *Server) DeleteInterface(d config.Interface) error {
 				server.monitorServer.emit(EVENT_SESSION_DEL, s.ToConfig())
 			}
 		}
-		intfs := make([]config.Interface, 0, len(server.config.Interfaces))
-		for _, c := range server.config.Interfaces {
-			if c.Name == i.i.Name {
-				continue
-			}
-			intfs = append(intfs, c)
-		}
-		server.config.Interfaces = intfs
 	}
 	return nil
 }
@@ -428,7 +445,7 @@ func (server *Server) requestMapping(id ldp.LDPIdentifier, fec ...string) error 
 	return nil
 }
 
-func (server *Server) MonitorSession() (*Watcher, error) {
+func (server *Server) MonitorSession() (Watcher, error) {
 	if server == nil {
 		return nil, fmt.Errorf("server is not started")
 	}
@@ -493,7 +510,7 @@ func (server *Server) loop() error {
 					log.Warnf("closed incoming connection from %s to avoid blocking", from)
 				}
 			}()
-		case e := <-sessionW.ch:
+		case e := <-sessionW.ch():
 			func() {
 				server.m.Lock()
 				defer server.m.Unlock()
@@ -580,6 +597,14 @@ func (server *Server) StartServer(g config.Global) (*Server, error) {
 	})
 
 	server.t.Go(server.loop)
+
+	for _, i := range server.config.Interfaces {
+		err := server.addInterface(i, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return server, nil
 }
 

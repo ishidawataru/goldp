@@ -116,7 +116,7 @@ type LDPSession struct {
 	sConf           config.Session
 	peerInitMsg     *ldp.InitMessage
 	localInitMsg    *ldp.InitMessage
-	labelWatcher    *Watcher
+	labelWatcher    Watcher
 	ifindex         int
 	connectInterval int
 }
